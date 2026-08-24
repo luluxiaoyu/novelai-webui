@@ -494,38 +494,52 @@ const copyImageToClipboard = async () => {
     <!-- 工作台页 (桌面端三栏并排各卡片内部滚动，手机端支持底部选项卡折叠切换) -->
     <main class="p-3 md:p-4 flex flex-col lg:flex-row gap-4 flex-1 min-h-0 overflow-hidden relative" v-else>
       
-      <!-- 手机端顶部/底部快速折叠切换栏 (仅在小屏可见) -->
-      <div class="lg:hidden flex items-center justify-around bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-1 shrink-0 shadow-sm">
+      <!-- 移动端半透明背景遮罩 -->
+      <div 
+        v-if="mobileTab !== 'canvas'" 
+        @click="mobileTab = 'canvas'"
+        class="fixed inset-0 bg-black/50 backdrop-blur-sm z-30 lg:hidden animate-fade-in"
+      ></div>
+
+      <!-- 移动端底部悬浮导航 (胶囊栏) -->
+      <div class="lg:hidden fixed bottom-6 left-1/2 -translate-x-1/2 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border border-gray-200/50 dark:border-gray-700/50 rounded-full p-1.5 flex items-center gap-1 shadow-[0_8px_30px_rgb(0,0,0,0.12)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.3)] z-50 transition-colors">
         <button 
-          @click="mobileTab = 'controls'" 
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition"
-          :class="mobileTab === 'controls' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'"
+          @click="mobileTab = mobileTab === 'controls' ? 'canvas' : 'controls'" 
+          class="flex flex-col items-center justify-center w-16 h-12 rounded-full transition-all duration-300"
+          :class="mobileTab === 'controls' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'"
         >
-          <SlidersHorizontal class="w-3.5 h-3.5" />
-          控制与提示词
+          <SlidersHorizontal class="w-5 h-5 mb-0.5" />
+          <span class="text-[10px] font-medium leading-none">控制</span>
         </button>
         <button 
           @click="mobileTab = 'canvas'" 
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition"
-          :class="mobileTab === 'canvas' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'"
+          class="flex flex-col items-center justify-center w-16 h-12 rounded-full transition-all duration-300"
+          :class="mobileTab === 'canvas' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'"
         >
-          <ImageIcon class="w-3.5 h-3.5" />
-          主画布
+          <ImageIcon class="w-5 h-5 mb-0.5" />
+          <span class="text-[10px] font-medium leading-none">画布</span>
         </button>
         <button 
-          @click="mobileTab = 'history'" 
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition"
-          :class="mobileTab === 'history' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'"
+          @click="mobileTab = mobileTab === 'history' ? 'canvas' : 'history'" 
+          class="flex flex-col items-center justify-center w-16 h-12 rounded-full transition-all duration-300 relative"
+          :class="mobileTab === 'history' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'"
         >
-          <Layers class="w-3.5 h-3.5" />
-          历史画廊 ({{ genStore.history.length }})
+          <Layers class="w-5 h-5 mb-0.5" />
+          <span class="text-[10px] font-medium leading-none">历史</span>
+          <span v-if="filteredHistory.length > 0" class="absolute top-1 right-2.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-gray-900"></span>
         </button>
       </div>
 
-      <!-- 左侧控制面板 (独立卡片内部滚动) -->
+      <!-- 左侧控制面板 (独立卡片内部滚动，移动端作为左侧抽屉) -->
       <aside 
-        class="w-full lg:w-96 flex-shrink-0 bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5 overflow-y-auto custom-scrollbar flex flex-col gap-5 shadow-sm transition-colors h-full"
-        :class="{ 'hidden lg:flex': mobileTab !== 'controls' }"
+        class="
+          w-[85vw] max-w-sm lg:max-w-none lg:w-96 flex-shrink-0 bg-white dark:bg-gray-900 
+          lg:rounded-2xl border-r lg:border lg:border-gray-200 dark:border-gray-800 
+          p-5 overflow-y-auto custom-scrollbar flex flex-col gap-5 shadow-2xl lg:shadow-sm 
+          transition-transform duration-300 ease-in-out h-full
+          fixed inset-y-0 left-0 z-40 lg:static lg:transform-none lg:translate-x-0 pb-24 lg:pb-5
+        "
+        :class="mobileTab === 'controls' ? 'translate-x-0' : '-translate-x-full'"
       >
         <!-- 提示词输入区 -->
         <div class="flex flex-col gap-3">
@@ -730,8 +744,7 @@ const copyImageToClipboard = async () => {
 
       <!-- 中间正中央主画布区 (内部独立缩放、拖拽与固定视口) -->
       <section 
-        class="flex-1 flex flex-col min-w-0 h-full relative overflow-hidden bg-gray-100 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-inner transition-colors"
-        :class="{ 'hidden lg:flex': mobileTab !== 'canvas' }"
+        class="flex-1 flex flex-col min-w-0 h-full relative overflow-hidden bg-gray-100 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-inner transition-colors lg:flex"
       >
         <!-- 顶部缩放与重置控制条 -->
         <div class="absolute top-4 left-4 z-20 flex items-center gap-2 bg-white/80 dark:bg-gray-900/80 backdrop-blur px-3 py-1.5 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm text-xs">
@@ -845,10 +858,16 @@ const copyImageToClipboard = async () => {
         </div>
       </section>
 
-      <!-- 右侧历史画廊 (内部独立滚动) -->
+      <!-- 右侧历史画廊 (内部独立滚动，移动端作为右侧抽屉) -->
       <aside 
-        class="w-full lg:w-56 flex-shrink-0 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-3 flex flex-col gap-3 overflow-hidden transition-colors h-full"
-        :class="{ 'hidden lg:flex': mobileTab !== 'history' }"
+        class="
+          w-[75vw] max-w-[240px] lg:max-w-none lg:w-56 flex-shrink-0 bg-white dark:bg-gray-900 
+          border-l lg:border lg:border-gray-200 dark:border-gray-800 lg:rounded-2xl 
+          p-3 flex flex-col gap-3 overflow-hidden shadow-2xl lg:shadow-none
+          transition-transform duration-300 ease-in-out h-full
+          fixed inset-y-0 right-0 z-40 lg:static lg:transform-none lg:translate-x-0 pb-24 lg:pb-3
+        "
+        :class="mobileTab === 'history' ? 'translate-x-0' : 'translate-x-full'"
       >
         <div class="flex justify-between items-center shrink-0">
           <div class="flex items-center gap-2">
