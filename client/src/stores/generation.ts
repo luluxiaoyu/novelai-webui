@@ -372,6 +372,7 @@ export const useGenerationStore = defineStore('generation', () => {
 
   const useParams = (historyItem: GeneratedImage) => {
     Object.assign(params, historyItem.params);
+    params.seed = -1; // 默认还原为随机种子，防止误点导致生成完全一样的图
   };
 
   const usePrompt = (p: { prompt: string; negative_prompt: string }) => {
@@ -402,6 +403,13 @@ export const useGenerationStore = defineStore('generation', () => {
     currentImage.value = null;
   };
 
+  const clearFilteredHistory = (idsToKeep: string[]) => {
+    history.value = history.value.filter(item => idsToKeep.includes(item.id));
+    if (currentImage.value && !idsToKeep.includes(currentImage.value.id)) {
+      currentImage.value = history.value.length > 0 ? history.value[0] : null;
+    }
+  };
+
   return { 
     params, 
     history, 
@@ -416,7 +424,8 @@ export const useGenerationStore = defineStore('generation', () => {
     sendToInpaint,
     deletePromptHistory, 
     deleteHistory,
-    clearHistory
+    clearHistory,
+    clearFilteredHistory
   };
 }, {
   persist: {

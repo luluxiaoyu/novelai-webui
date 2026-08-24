@@ -15,6 +15,21 @@ const toggleDark = useToggle(isDark);
 const inputToken = ref('');
 const showPromptHistory = ref(false);
 const mobileTab = ref<'canvas' | 'controls' | 'history'>('canvas');
+const historyFilter = ref('today');
+
+const filteredHistory = computed(() => {
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfYesterday = startOfToday - 86400000;
+  const startOfThisWeek = startOfToday - (now.getDay() === 0 ? 6 : now.getDay() - 1) * 86400000;
+  
+  return genStore.history.filter(item => {
+    if (historyFilter.value === 'today') return item.timestamp >= startOfToday;
+    if (historyFilter.value === 'yesterday') return item.timestamp >= startOfYesterday && item.timestamp < startOfToday;
+    if (historyFilter.value === 'week') return item.timestamp >= startOfThisWeek;
+    return true; // 'all'
+  });
+});
 
 const isV3 = computed(() => {
   return genStore.params.model.includes('-3') || genStore.params.model.includes('safe-diffusion');
@@ -599,7 +614,11 @@ const downloadImage = () => {
             <label class="block text-xs font-semibold mb-1">随机种子 (Seed)</label>
             <div class="flex gap-2">
               <input type="number" v-model.number="genStore.params.seed" class="flex-1 bg-gray-50 dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-lg p-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-500 transition-colors" />
-              <button @click="genStore.params.seed = -1" class="px-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700 text-[11px] transition-colors">随机</button>
+              <button @click="genStore.params.seed = -1" class="px-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700 text-[11px] transition-colors">重置随机</button>
+            </div>
+            <div v-if="genStore.currentImage" class="flex justify-between items-center mt-1.5 text-[10px]">
+              <span class="text-gray-500">当前图种子: {{ genStore.currentImage.params.seed }}</span>
+              <button @click="genStore.params.seed = genStore.currentImage.params.seed" class="text-blue-500 hover:text-blue-600 transition font-medium">使用此种子</button>
             </div>
           </div>
 
@@ -782,12 +801,20 @@ const downloadImage = () => {
         :class="{ 'hidden lg:flex': mobileTab !== 'history' }"
       >
         <div class="flex justify-between items-center shrink-0">
-          <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">历史生成 ({{ genStore.history.length }})</h3>
+          <div class="flex items-center gap-2">
+            <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">历史 ({{ filteredHistory.length }})</h3>
+            <select v-model="historyFilter" class="text-[11px] bg-transparent border-none text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 outline-none cursor-pointer appearance-none">
+              <option value="today">今天</option>
+              <option value="yesterday">昨天</option>
+              <option value="week">本周</option>
+              <option value="all">全部</option>
+            </select>
+          </div>
           <button 
-            v-if="genStore.history.length > 0"
-            @click="genStore.clearHistory()" 
+            v-if="filteredHistory.length > 0"
+            @click="genStore.clearFilteredHistory(genStore.history.filter(i => !filteredHistory.map(f => f.id).includes(i.id)).map(i => i.id))" 
             class="text-[11px] text-red-500 hover:underline flex items-center gap-1"
-            title="清空所有历史图片"
+            title="清空当前显示的记录"
           >
             <Trash2 class="w-3 h-3" />
             清空
@@ -796,7 +823,7 @@ const downloadImage = () => {
 
         <div class="flex flex-row lg:flex-col gap-3 overflow-auto custom-scrollbar flex-1">
           <div 
-            v-for="item in genStore.history" 
+            v-for="item in filteredHistory" 
             :key="item.id"
             @click="genStore.currentImage = item; resetZoom(); mobileTab = 'canvas'"
             class="group relative w-20 h-20 lg:w-full lg:h-32 shrink-0 rounded-lg overflow-hidden cursor-pointer border-2 transition-all"
