@@ -35,6 +35,9 @@ export const isEncryptionEnabled = (): boolean => {
   return process.env.ENABLE_ENCRYPTION === 'true' || process.env.ENABLE_ENCRYPTION === '1';
 };
 
-export const getEncryptionKey = (): string => {
-  return isSiteAuthEnabled() ? `nahida1027${getSitePassword()}` : 'nahida1027';
+export const getEncryptionKey = (clientAccessKey?: string): string => {
+  if (clientAccessKey && clientAccessKey.trim()) {
+    return `nahida1027${clientAccessKey.trim()}`;
+  }
+  return 'nahida1027';
 };

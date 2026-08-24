@@ -29,15 +29,22 @@ export const useAuthStore = defineStore('auth', () => {
         url: '/api/auth/status',
         headers: siteAccessKey.value ? { 'x-access-key': siteAccessKey.value } : {}
       });
-      siteAuthRequired.value = !!res.data.requiresAuth;
-      if (!siteAuthRequired.value) {
-        siteUnlocked.value = true;
+      if (typeof res.data === 'object' && res.data !== null && 'requiresAuth' in res.data) {
+        siteAuthRequired.value = !!res.data.requiresAuth;
+        if (!siteAuthRequired.value) {
+          siteUnlocked.value = true;
+        } else {
+          siteUnlocked.value = !!res.data.isVerified;
+        }
       } else {
-        siteUnlocked.value = !!res.data.isVerified;
+        siteAuthRequired.value = true;
+        siteUnlocked.value = false;
       }
       return siteUnlocked.value;
     } catch (e: any) {
       console.warn('Check site auth status error:', e);
+      siteAuthRequired.value = true;
+      siteUnlocked.value = false;
       return false;
     } finally {
       siteAuthLoading.value = false;
@@ -53,18 +60,20 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       siteAuthLoading.value = true;
       siteAuthError.value = '';
+      const trimmed = inputKey.trim();
       const res = await encryptedAxios({
         method: 'POST',
         url: '/api/auth/verify-access',
-        data: { accessKey: inputKey.trim() }
+        data: { accessKey: trimmed },
+        headers: { 'x-access-key': trimmed }
       });
-      if (res.data.success) {
-        siteAccessKey.value = inputKey.trim();
+      if (res.data && res.data.success) {
+        siteAccessKey.value = trimmed;
         siteUnlocked.value = true;
         siteAuthError.value = '';
         return true;
       }
-      siteAuthError.value = res.data.message || '访问密钥错误';
+      siteAuthError.value = res.data?.message || '访问密钥错误';
       return false;
     } catch (e: any) {
       siteAuthError.value = e.response?.data?.message || '访问密钥错误或验证失败';

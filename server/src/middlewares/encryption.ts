@@ -6,7 +6,8 @@ export const encryptionMiddleware = (req: Request, res: Response, next: NextFunc
     return next();
   }
 
-  const key = getEncryptionKey();
+  const clientKey = (req.headers['x-access-key'] as string || '').trim();
+  const key = getEncryptionKey(clientKey);
   const keyBuf = Buffer.from(key, 'utf8');
 
   // Decrypt body if it's a Buffer

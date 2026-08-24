@@ -4,7 +4,11 @@ import { xorUint8Array } from './cipher';
 
 export const isEncryptionEnabled = (import.meta as any).env.VITE_ENABLE_ENCRYPTION === 'true';
 
-const getEncryptKey = () => {
+const getEncryptKey = (headers?: any) => {
+  const customKey = headers?.['x-access-key'];
+  if (customKey && typeof customKey === 'string' && customKey.trim()) {
+    return `nahida1027${customKey.trim()}`;
+  }
   const authStore = useAuthStore();
   return authStore.siteAccessKey ? `nahida1027${authStore.siteAccessKey}` : 'nahida1027';
 };
@@ -14,7 +18,7 @@ export const encryptedAxios = async (config: AxiosRequestConfig) => {
     return axios(config);
   }
 
-  const key = getEncryptKey();
+  const key = getEncryptKey(config.headers);
   const modifiedConfig = { ...config };
   modifiedConfig.headers = { ...modifiedConfig.headers, 'x-encrypted': '1' };
 
@@ -71,7 +75,7 @@ export const encryptedAxios = async (config: AxiosRequestConfig) => {
 export const encryptedFetchStream = async (url: string, options: RequestInit) => {
   if (!isEncryptionEnabled) return fetch(url, options);
 
-  const key = getEncryptKey();
+  const key = getEncryptKey(options.headers);
   const modifiedOptions = { ...options };
   modifiedOptions.headers = { ...modifiedOptions.headers, 'x-encrypted': '1' };
 
