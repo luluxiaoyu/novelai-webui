@@ -3,6 +3,7 @@ import { ref, reactive } from 'vue';
 import { encryptedAxios, encryptedFetchStream } from '../utils/api';
 import JSZip from 'jszip';
 import { useAuthStore } from './auth';
+import { useWebDAVStore } from './webdav';
 
 export interface GenerationParams {
   prompt: string;
@@ -310,6 +311,7 @@ export const useGenerationStore = defineStore('generation', () => {
                           };
                           currentImage.value = generated;
                           history.value.unshift(generated);
+                          useWebDAVStore().autoSyncSingle(useGenerationStore(), generated);
                           streamPreviewUrl.value = null;
                           streamResultSaved = true;
                         } else {
@@ -337,6 +339,7 @@ export const useGenerationStore = defineStore('generation', () => {
             };
             currentImage.value = generated;
             history.value.unshift(generated);
+            useWebDAVStore().autoSyncSingle(useGenerationStore(), generated);
           }
         } finally {
           clearTimeout(timeoutId);
@@ -371,6 +374,7 @@ export const useGenerationStore = defineStore('generation', () => {
           
           currentImage.value = generated;
           history.value.unshift(generated);
+          useWebDAVStore().autoSyncSingle(useGenerationStore(), generated);
           // 保留最多 100 张历史图
           if (history.value.length > 100) history.value.pop();
         } else {
@@ -503,12 +507,14 @@ export const useGenerationStore = defineStore('generation', () => {
 
   const deletePromptHistory = (id: string) => {
     promptHistory.value = promptHistory.value.filter(p => p.id !== id);
+    useWebDAVStore().autoSyncMetadata(useGenerationStore());
   };
 
   const toggleFavoritePrompt = (id: string) => {
     const item = promptHistory.value.find(p => p.id === id);
     if (item) {
       item.isFavorite = !item.isFavorite;
+      useWebDAVStore().autoSyncMetadata(useGenerationStore());
     }
   };
 
@@ -516,6 +522,7 @@ export const useGenerationStore = defineStore('generation', () => {
     const item = promptHistory.value.find(p => p.id === id);
     if (item) {
       item.note = note;
+      useWebDAVStore().autoSyncMetadata(useGenerationStore());
     }
   };
 
@@ -523,19 +530,25 @@ export const useGenerationStore = defineStore('generation', () => {
     const item = promptHistory.value.find(p => p.id === id);
     if (item) {
       item.group = group.trim() || undefined;
+      useWebDAVStore().autoSyncMetadata(useGenerationStore());
     }
   };
 
   const deleteHistory = (id: string) => {
+    const item = history.value.find(i => i.id === id);
     history.value = history.value.filter(i => i.id !== id);
     if (currentImage.value?.id === id) {
       currentImage.value = history.value.length > 0 ? history.value[0] : null;
+    }
+    if (item) {
+      useWebDAVStore().autoSyncDeleteImage(item.id, item.timestamp, useGenerationStore());
     }
   };
 
   const clearHistory = () => {
     history.value = [];
     currentImage.value = null;
+    useWebDAVStore().autoSyncMetadata(useGenerationStore());
   };
 
   const clearFilteredHistory = (idsToKeep: string[]) => {
@@ -543,6 +556,7 @@ export const useGenerationStore = defineStore('generation', () => {
     if (currentImage.value && !idsToKeep.includes(currentImage.value.id)) {
       currentImage.value = history.value.length > 0 ? history.value[0] : null;
     }
+    useWebDAVStore().autoSyncMetadata(useGenerationStore());
   };
 
   return { 

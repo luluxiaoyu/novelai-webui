@@ -1,15 +1,47 @@
 <script setup lang="ts">
 import { useAuthStore } from './stores/auth';
 import { useGenerationStore } from './stores/generation';
+import { useWebDAVStore } from './stores/webdav';
 import { saveAs } from 'file-saver';
 import { computed, ref, onMounted } from 'vue';
 import { useDark, useToggle } from '@vueuse/core';
 import JSZip from 'jszip';
 import CustomSelect from './components/CustomSelect.vue';
-import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, Sparkles, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud } from 'lucide-vue-next';
+import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, Sparkles, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud, Cloud, Wifi } from 'lucide-vue-next';
 
 const authStore = useAuthStore();
 const genStore = useGenerationStore();
+const webdavStore = useWebDAVStore();
+const connectionStatus = ref<{ type: 'success' | 'error', text: string } | null>(null);
+
+const handleTestConnection = async () => {
+  connectionStatus.value = null;
+  const result = await webdavStore.testConnection();
+  if (result === 'success') {
+    connectionStatus.value = { type: 'success', text: '连接成功！' };
+  } else {
+    connectionStatus.value = { type: 'error', text: result as string };
+  }
+};
+
+const handleCreateProfile = async () => {
+  const name = prompt('请输入新存档名称（仅限英文、数字、下划线）：');
+  if (name && /^[a-zA-Z0-9_]+$/.test(name)) {
+    await webdavStore.createProfile(name);
+  } else if (name) {
+    alert('存档名称不合法！');
+  }
+};
+
+const handleDeleteProfile = async () => {
+  if (webdavStore.currentProfile === 'Default') {
+    alert('不能删除 Default 默认存档！');
+    return;
+  }
+  if (confirm(`确定要彻底删除云端存档 "${webdavStore.currentProfile}" 及其所有数据吗？此操作不可逆！`)) {
+    await webdavStore.deleteProfile(webdavStore.currentProfile);
+  }
+};
 
 const isDark = useDark();
 const toggleDark = useToggle(isDark);
@@ -26,6 +58,7 @@ const paramsCopied = ref(false);
 const imageCopied = ref(false);
 
 const showDataModal = ref(false);
+const dataModalTab = ref<'local'|'webdav'>('local');
 const exportIncludeImages = ref(false);
 const importMode = ref<'merge' | 'overwrite'>('merge');
 const fileInputRef = ref<HTMLInputElement | null>(null);
@@ -1329,8 +1362,12 @@ const copyImageToClipboard = async () => {
           </button>
         </div>
         
-        <div class="p-5 flex flex-col gap-6">
-          <!-- 导出选项 -->
+        <div class="flex border-b border-gray-200 dark:border-gray-800">
+          <button @click="dataModalTab = 'local'" :class="dataModalTab === 'local' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'" class="flex-1 py-3 text-sm font-medium border-b-2 transition">本地 ZIP 备份</button>
+          <button @click="dataModalTab = 'webdav'" :class="dataModalTab === 'webdav' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'" class="flex-1 py-3 text-sm font-medium border-b-2 transition flex items-center justify-center gap-1"><Cloud class="w-4 h-4" /> WebDAV 同步</button>
+        </div>
+        
+        <div v-if="dataModalTab === 'local'" class="p-5 flex flex-col gap-6">
           <div class="flex flex-col gap-3">
             <h4 class="text-sm font-semibold text-gray-800 dark:text-gray-200 border-b border-gray-100 dark:border-gray-800 pb-2">导出数据</h4>
             <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
@@ -1350,8 +1387,6 @@ const copyImageToClipboard = async () => {
               {{ isExporting ? '正在打包压缩包...' : '下载备份文件' }}
             </button>
           </div>
-
-          <!-- 导入选项 -->
           <div class="flex flex-col gap-3">
             <h4 class="text-sm font-semibold text-gray-800 dark:text-gray-200 border-b border-gray-100 dark:border-gray-800 pb-2">导入恢复</h4>
             <div class="flex gap-4">
@@ -1367,7 +1402,6 @@ const copyImageToClipboard = async () => {
             <p v-if="importMode === 'overwrite'" class="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 p-2 rounded-lg">
               警告：当前的所有历史记录和参数将被导入的文件完全替换！
             </p>
-            
             <input type="file" accept=".zip" class="hidden" ref="fileInputRef" @change="handleImportData" />
             <button 
               @click="fileInputRef?.click()"
@@ -1378,6 +1412,63 @@ const copyImageToClipboard = async () => {
               <UploadCloud v-else class="w-4 h-4" />
               {{ isImporting ? '正在解析导入...' : '选择并导入 ZIP 文件' }}
             </button>
+          </div>
+        </div>
+
+        <div v-else class="p-5 flex flex-col gap-4">
+          <div class="flex flex-col gap-2">
+            <label class="text-xs font-semibold text-gray-500">服务器配置</label>
+            <input v-model="webdavStore.config.url" type="text" placeholder="WebDAV URL (如 https://dav.box.com)" class="w-full bg-gray-50 dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500" />
+            <div class="flex gap-2">
+              <input v-model="webdavStore.config.username" type="text" placeholder="用户名" class="w-1/2 bg-gray-50 dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500" />
+              <input v-model="webdavStore.config.password" type="password" placeholder="密码" class="w-1/2 bg-gray-50 dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500" />
+            </div>
+            <div class="flex gap-2 items-center">
+               <input v-model="webdavStore.config.basePath" type="text" placeholder="存储路径 (如 /NovelAI_Saves)" class="flex-1 bg-gray-50 dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500" />
+               <button @click="handleTestConnection" :disabled="webdavStore.isSyncing" class="bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-sm px-3 py-2 rounded-lg transition disabled:opacity-50 whitespace-nowrap"><Wifi class="w-4 h-4 inline mr-1" />测试连接</button>
+            </div>
+            <p v-if="connectionStatus" :class="connectionStatus.type === 'success' ? 'text-green-500' : 'text-red-500'" class="text-xs mt-1 px-1">{{ connectionStatus.text }}</p>
+          </div>
+          <div class="border-t border-gray-100 dark:border-gray-800 my-1"></div>
+          <div class="flex flex-col gap-2">
+            <div class="flex justify-between items-center">
+              <label class="text-xs font-semibold text-gray-500">当前存档 (Profile)</label>
+              <button @click="webdavStore.loadProfiles" :disabled="webdavStore.isSyncing" class="text-xs text-blue-500 hover:underline">刷新存档列表</button>
+            </div>
+            <div class="flex gap-2">
+              <div class="flex-1">
+                <CustomSelect 
+                  v-model="webdavStore.currentProfile" 
+                  :options="webdavStore.profiles.map(p => ({ label: p, value: p }))" 
+                />
+              </div>
+              <button @click="handleCreateProfile" title="新建存档" class="px-3 bg-gray-200 hover:bg-gray-300 dark:bg-gray-800 dark:hover:bg-gray-700 rounded-lg transition text-gray-700 dark:text-gray-300">+</button>
+              <button @click="handleDeleteProfile" title="删除当前存档" class="px-3 bg-red-100 hover:bg-red-200 dark:bg-red-900/30 dark:hover:bg-red-900/50 rounded-lg transition text-red-600 dark:text-red-400"><Trash2 class="w-4 h-4" /></button>
+            </div>
+            <div class="flex gap-2 mt-2">
+              <template v-if="webdavStore.isSyncing">
+                 <div class="flex flex-col gap-2 w-full mt-1 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-3">
+                   <div class="w-full bg-gray-200 rounded-full h-2 dark:bg-gray-700 overflow-hidden shadow-inner">
+                     <div class="bg-blue-600 h-2 rounded-full transition-all duration-300" :style="{ width: webdavStore.syncProgress + '%' }"></div>
+                   </div>
+                   <p class="text-xs text-center font-medium text-gray-600 dark:text-gray-400 animate-pulse">{{ webdavStore.syncText }}</p>
+                 </div>
+              </template>
+              <template v-else>
+                 <button @click="webdavStore.syncDown(genStore)" :disabled="webdavStore.isSyncing" class="flex-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 py-2 rounded-lg text-sm font-medium hover:bg-blue-200 dark:hover:bg-blue-900/50 transition flex items-center justify-center gap-1"><DownloadCloud class="w-4 h-4" />云端 -> 本地</button>
+                 <button @click="webdavStore.syncUp(genStore)" :disabled="webdavStore.isSyncing" class="flex-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 py-2 rounded-lg text-sm font-medium hover:bg-green-200 dark:hover:bg-green-900/50 transition flex items-center justify-center gap-1"><UploadCloud class="w-4 h-4" />本地 -> 云端</button>
+              </template>
+            </div>
+          </div>
+          <div class="flex items-center justify-between bg-gray-50 dark:bg-gray-950 p-3 rounded-lg border border-gray-200 dark:border-gray-800">
+             <div class="flex flex-col">
+               <span class="text-sm font-medium">无感自动同步</span>
+               <span class="text-xs text-gray-500">每次生图后静默增量推送至云端</span>
+             </div>
+             <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" v-model="webdavStore.autoSync" class="sr-only peer">
+              <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-500"></div>
+            </label>
           </div>
         </div>
       </div>

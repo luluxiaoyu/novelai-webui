@@ -17,10 +17,14 @@ router.get('/user/subscription', getUserSubscription);
 router.get('/user/data', getUserData);
 router.get('/user/information', getUserInformation);
 
+import { webdavAction } from '../controllers/webdav';
+
 router.post('/generate-image', generateImage);
 router.post('/ai/generate-image', generateImage);
 router.post('/generate-image-stream', generateImageStream);
 router.post('/ai/generate-image-stream', generateImageStream);
 router.get('/ai/generate-image/suggest-tags', suggestTags);
+
+router.post('/webdav/action', webdavAction);
 
 export default router;

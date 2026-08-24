@@ -31,7 +31,25 @@ export const encryptedAxios = async (config: AxiosRequestConfig) => {
   const originalResponseType = modifiedConfig.responseType;
   modifiedConfig.responseType = 'arraybuffer'; 
 
-  const res = await axios(modifiedConfig);
+  let res;
+  try {
+    res = await axios(modifiedConfig);
+  } catch (error: any) {
+    if (error.response && error.response.data) {
+      try {
+        const decrypted = xorUint8Array(new Uint8Array(error.response.data), key);
+        const text = new TextDecoder().decode(decrypted);
+        try {
+          error.response.data = JSON.parse(text);
+        } catch {
+          error.response.data = text;
+        }
+      } catch (decErr) {
+        // Fallback if decryption fails
+      }
+    }
+    throw error;
+  }
 
   if (res.data) {
     const decrypted = xorUint8Array(new Uint8Array(res.data), key);
