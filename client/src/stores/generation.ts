@@ -32,6 +32,40 @@ export interface GeneratedImage {
   timestamp: number;
 }
 
+
+
+const idbStorage = {
+  getItem: async (key: string): Promise<string | null> => {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open('novelai_db', 1);
+      request.onupgradeneeded = () => { request.result.createObjectStore('store'); };
+      request.onsuccess = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains('store')) { resolve(null); return; }
+        const tx = db.transaction('store', 'readonly');
+        const getReq = tx.objectStore('store').get(key);
+        getReq.onsuccess = () => resolve(getReq.result || null);
+        getReq.onerror = () => reject(getReq.error);
+      };
+      request.onerror = () => reject(request.error);
+    });
+  },
+  setItem: async (key: string, value: string): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open('novelai_db', 1);
+      request.onupgradeneeded = () => { request.result.createObjectStore('store'); };
+      request.onsuccess = () => {
+        const db = request.result;
+        const tx = db.transaction('store', 'readwrite');
+        const putReq = tx.objectStore('store').put(value, key);
+        putReq.onsuccess = () => resolve();
+        putReq.onerror = () => reject(putReq.error);
+      };
+      request.onerror = () => reject(request.error);
+    });
+  },
+};
+
 export const useGenerationStore = defineStore('generation', () => {
   const authStore = useAuthStore();
   
@@ -455,7 +489,14 @@ export const useGenerationStore = defineStore('generation', () => {
     clearFilteredHistory
   };
 }, {
-  persist: {
-    pick: ['params', 'history', 'promptHistory']
-  }
+  persist: [
+    {
+      pick: ['params', 'promptHistory'],
+      storage: localStorage
+    },
+    {
+      pick: ['history'],
+      storage: idbStorage as any
+    }
+  ]
 });
