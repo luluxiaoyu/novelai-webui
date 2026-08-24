@@ -5,7 +5,7 @@ import { saveAs } from 'file-saver';
 import { computed, ref, onMounted } from 'vue';
 import { useDark, useToggle } from '@vueuse/core';
 import CustomSelect from './components/CustomSelect.vue';
-import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, Sparkles, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Star, Check, Lock } from 'lucide-vue-next';
+import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, Sparkles, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Star, Check, Lock, Search, Folder, FolderHeart } from 'lucide-vue-next';
 
 const authStore = useAuthStore();
 const genStore = useGenerationStore();
@@ -18,7 +18,9 @@ const inputAccessKey = ref('');
 const showPromptHistory = ref(false);
 const mobileTab = ref<'canvas' | 'controls' | 'history'>('canvas');
 const historyFilter = ref('today');
-const promptFilter = ref('all');
+const promptDateFilter = ref('all');
+const promptGroupFilter = ref('all');
+const promptSearchQuery = ref('');
 const paramsCopied = ref(false);
 const imageCopied = ref(false);
 
@@ -36,20 +38,54 @@ const filteredHistory = computed(() => {
   });
 });
 
+const customPromptGroups = computed(() => {
+  const groups = new Set<string>();
+  genStore.promptHistory.forEach(p => {
+    if (p.group) groups.add(p.group);
+  });
+  return Array.from(groups).sort();
+});
+
 const filteredPromptHistory = computed(() => {
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const startOfYesterday = startOfToday - 86400000;
+  const startOfThisWeek = startOfToday - (now.getDay() === 0 ? 6 : now.getDay() - 1) * 86400000;
   
+  const query = promptSearchQuery.value.trim().toLowerCase();
+
   return genStore.promptHistory.filter(item => {
-    if (promptFilter.value === 'favorites') return item.isFavorite;
-    if (promptFilter.value === 'today') return item.timestamp >= startOfToday;
-    if (promptFilter.value === 'yesterday') return item.timestamp >= startOfYesterday && item.timestamp < startOfToday;
-    return true; // 'all'
+    // Search
+    if (query) {
+      const matchPrompt = item.prompt.toLowerCase().includes(query);
+      const matchNegative = item.negative_prompt && item.negative_prompt.toLowerCase().includes(query);
+      const matchNote = item.note && item.note.toLowerCase().includes(query);
+      if (!matchPrompt && !matchNegative && !matchNote) return false;
+    }
+
+    // Group / Favorites
+    if (promptGroupFilter.value === 'favorites') {
+      if (!item.isFavorite) return false;
+    } else if (promptGroupFilter.value !== 'all') {
+      if (item.group !== promptGroupFilter.value) return false;
+    }
+
+    // Date
+    if (promptDateFilter.value === 'today') {
+      if (item.timestamp < startOfToday) return false;
+    } else if (promptDateFilter.value === 'yesterday') {
+      if (item.timestamp < startOfYesterday || item.timestamp >= startOfToday) return false;
+    } else if (promptDateFilter.value === 'week') {
+      if (item.timestamp < startOfThisWeek) return false;
+    } else if (promptDateFilter.value === 'older') {
+      if (item.timestamp >= startOfThisWeek) return false;
+    }
+
+    return true;
   }).sort((a, b) => {
     if (a.isFavorite && !b.isFavorite) return -1;
     if (!a.isFavorite && b.isFavorite) return 1;
-    return 0;
+    return b.timestamp - a.timestamp;
   });
 });
 
@@ -84,11 +120,12 @@ const historyFilterOptions = [
   { value: 'all', label: '全部' }
 ];
 
-const promptFilterOptions = [
-  { value: 'all', label: '全部' },
-  { value: 'favorites', label: '我的收藏' },
+const promptDateFilterOptions = [
+  { value: 'all', label: '全部时间' },
   { value: 'today', label: '今天' },
-  { value: 'yesterday', label: '昨天' }
+  { value: 'yesterday', label: '昨天' },
+  { value: 'week', label: '过去7天' },
+  { value: 'older', label: '更早' }
 ];
 
 const batchOptions = [
@@ -1028,59 +1065,128 @@ const copyImageToClipboard = async () => {
 
     <!-- 历史提示词弹窗 -->
     <div v-if="showPromptHistory" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in" @click.self="showPromptHistory = false">
-      <div class="bg-white dark:bg-gray-900 w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col max-h-[80vh] overflow-hidden">
-        <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-950/50">
-          <h3 class="text-base font-semibold flex items-center gap-2">
-            <History class="w-4 h-4 text-blue-500" />
-            历史提示词 ({{ filteredPromptHistory.length }})
-          </h3>
-          <div class="flex items-center gap-4">
-            <CustomSelect v-model="promptFilter" :options="promptFilterOptions" variant="ghost" placement="right" />
-            <button @click="showPromptHistory = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 transition">
-              <X class="w-5 h-5" />
+      <div class="bg-white dark:bg-gray-900 w-full max-w-5xl rounded-2xl shadow-2xl flex max-h-[85vh] h-[85vh] overflow-hidden">
+        
+        <!-- 左侧过滤器和搜索 -->
+        <div class="w-64 bg-gray-50 dark:bg-gray-950/50 border-r border-gray-200 dark:border-gray-800 flex flex-col overflow-y-auto custom-scrollbar">
+          <div class="p-4 border-b border-gray-200 dark:border-gray-800">
+            <h3 class="text-base font-semibold flex items-center gap-2 mb-4">
+              <History class="w-5 h-5 text-blue-500" />
+              提示词库
+            </h3>
+            
+            <div class="relative">
+              <Search class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input 
+                v-model="promptSearchQuery"
+                type="text" 
+                placeholder="搜索提示词或备注..."
+                class="w-full pl-9 pr-3 py-2 text-xs bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+              />
+            </div>
+          </div>
+
+          <div class="p-3 flex flex-col gap-1">
+            <div class="text-xs font-bold text-gray-400 dark:text-gray-500 px-3 py-2 uppercase tracking-wider">时间筛选</div>
+            <button 
+              v-for="opt in promptDateFilterOptions" :key="opt.value"
+              @click="promptDateFilter = opt.value"
+              class="text-left px-3 py-2 text-xs rounded-lg transition-colors flex items-center justify-between group"
+              :class="promptDateFilter === opt.value ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 font-semibold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800'"
+            >
+              <span>{{ opt.label }}</span>
+              <Check v-if="promptDateFilter === opt.value" class="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div class="p-3 flex flex-col gap-1 border-t border-gray-200 dark:border-gray-800 flex-1">
+            <div class="text-xs font-bold text-gray-400 dark:text-gray-500 px-3 py-2 uppercase tracking-wider">分组与收藏</div>
+            <button 
+              @click="promptGroupFilter = 'all'"
+              class="text-left px-3 py-2 text-xs rounded-lg transition-colors flex items-center gap-2"
+              :class="promptGroupFilter === 'all' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 font-semibold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800'"
+            >
+              <FolderOpen class="w-4 h-4 opacity-70" /> 全部
+            </button>
+            <button 
+              @click="promptGroupFilter = 'favorites'"
+              class="text-left px-3 py-2 text-xs rounded-lg transition-colors flex items-center gap-2"
+              :class="promptGroupFilter === 'favorites' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 font-semibold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800'"
+            >
+              <FolderHeart class="w-4 h-4 opacity-70" /> 我的收藏
+            </button>
+            
+            <button 
+              v-for="group in customPromptGroups" :key="group"
+              @click="promptGroupFilter = group"
+              class="text-left px-3 py-2 text-xs rounded-lg transition-colors flex items-center gap-2"
+              :class="promptGroupFilter === group ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 font-semibold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800'"
+            >
+              <Folder class="w-4 h-4 opacity-70" /> {{ group }}
             </button>
           </div>
         </div>
-        
-        <div class="flex-1 overflow-auto p-4 custom-scrollbar">
-          <div v-if="filteredPromptHistory.length === 0" class="text-center py-10 text-gray-400 dark:text-gray-600 text-sm">
-            暂无提示词
-          </div>
-          <div v-else class="flex flex-col gap-3">
-            <div v-for="item in filteredPromptHistory" :key="item.id" class="p-4 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl hover:border-blue-300 dark:hover:border-blue-700 transition group relative flex flex-col gap-2">
-              
-              <!-- 顶部：收藏与备注 -->
-              <div class="flex items-center gap-2 border-b border-gray-200/50 dark:border-gray-700/50 pb-2 mb-1">
-                <button @click="genStore.toggleFavoritePrompt(item.id)" title="收藏/取消收藏">
-                  <Star :class="['w-4 h-4 transition-colors', item.isFavorite ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300 hover:text-yellow-400 dark:text-gray-600']" />
-                </button>
-                <input
-                  type="text"
-                  :value="item.note || new Date(item.timestamp).toLocaleString()"
-                  @change="genStore.updatePromptNote(item.id, ($event.target as HTMLInputElement).value)"
-                  class="text-xs bg-transparent border-b border-transparent focus:border-blue-500 text-gray-600 dark:text-gray-400 focus:text-gray-800 dark:focus:text-gray-200 outline-none flex-1 transition-colors"
-                  placeholder="添加备注..."
-                />
-              </div>
 
-              <div class="pr-16">
-                <p class="text-sm text-gray-800 dark:text-gray-200 mb-1.5 font-medium leading-relaxed">{{ item.prompt }}</p>
-                <p v-if="item.negative_prompt" class="text-xs text-red-500/80 dark:text-red-400/80 leading-relaxed"><span class="font-semibold text-red-600/80 dark:text-red-400/80">Negative:</span> {{ item.negative_prompt }}</p>
-              </div>
-              
-              <div class="absolute top-1/2 -translate-y-1/2 right-4 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button 
-                  @click="genStore.usePrompt(item); showPromptHistory = false" 
-                  class="bg-blue-600 text-white text-xs px-3 py-1.5 rounded-lg shadow-sm hover:bg-blue-700 transition font-medium"
-                >
-                  应用
-                </button>
-                <button 
-                  @click="genStore.deletePromptHistory(item.id)" 
-                  class="text-red-500 text-xs px-3 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 transition"
-                >
-                  删除
-                </button>
+        <!-- 右侧内容区 -->
+        <div class="flex-1 flex flex-col overflow-hidden bg-white dark:bg-gray-900">
+          <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center">
+            <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              共找到 <span class="font-bold text-gray-900 dark:text-white">{{ filteredPromptHistory.length }}</span> 条记录
+            </h3>
+            <button @click="showPromptHistory = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition">
+              <X class="w-5 h-5" />
+            </button>
+          </div>
+          
+          <div class="flex-1 overflow-auto p-4 custom-scrollbar">
+            <div v-if="filteredPromptHistory.length === 0" class="text-center py-20 text-gray-400 dark:text-gray-600 text-sm flex flex-col items-center">
+              <Search class="w-12 h-12 opacity-20 mb-3" />
+              未找到匹配的提示词
+            </div>
+            <div v-else class="flex flex-col gap-3">
+              <div v-for="item in filteredPromptHistory" :key="item.id" class="p-4 bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700 rounded-xl hover:shadow-md hover:border-blue-300 dark:hover:border-blue-700 transition group relative flex flex-col gap-2">
+                
+                <!-- 顶部：收藏与分组与备注 -->
+                <div class="flex items-center gap-2 border-b border-gray-200/60 dark:border-gray-700/60 pb-2 mb-1">
+                  <button @click="genStore.toggleFavoritePrompt(item.id)" title="收藏/取消收藏" class="shrink-0">
+                    <Star :class="['w-4 h-4 transition-colors', item.isFavorite ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300 hover:text-yellow-400 dark:text-gray-600']" />
+                  </button>
+                  <input
+                    type="text"
+                    :value="item.group || ''"
+                    @change="genStore.updatePromptGroup(item.id, ($event.target as HTMLInputElement).value)"
+                    class="w-16 shrink-0 text-[11px] px-1.5 py-0.5 rounded bg-gray-200/50 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300 outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+                    placeholder="分组..."
+                    title="输入并回车以设置自定义分组"
+                  />
+                  <input
+                    type="text"
+                    :value="item.note || new Date(item.timestamp).toLocaleString()"
+                    @change="genStore.updatePromptNote(item.id, ($event.target as HTMLInputElement).value)"
+                    class="text-xs bg-transparent border-b border-transparent focus:border-blue-500 text-gray-600 dark:text-gray-400 focus:text-gray-800 dark:focus:text-gray-200 outline-none flex-1 transition-colors min-w-0"
+                    placeholder="添加备注..."
+                  />
+                </div>
+
+                <div class="pr-2 pb-8">
+                  <p class="text-sm text-gray-800 dark:text-gray-200 mb-1.5 font-medium leading-relaxed break-all">{{ item.prompt }}</p>
+                  <p v-if="item.negative_prompt" class="text-xs text-red-500/80 dark:text-red-400/80 leading-relaxed line-clamp-1" :title="item.negative_prompt"><span class="font-semibold text-red-600/80 dark:text-red-400/80">Negative:</span> {{ item.negative_prompt }}</p>
+                </div>
+                
+                <div class="absolute bottom-3 right-4 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button 
+                    @click="genStore.deletePromptHistory(item.id)" 
+                    class="text-red-500 text-xs px-2.5 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 transition flex items-center gap-1"
+                  >
+                    <Trash2 class="w-3.5 h-3.5" />
+                  </button>
+                  <button 
+                    @click="genStore.usePrompt(item); showPromptHistory = false" 
+                    class="bg-blue-600 text-white text-xs px-3 py-1.5 rounded-lg shadow-sm hover:bg-blue-700 transition font-medium"
+                  >
+                    应用
+                  </button>
+                </div>
               </div>
             </div>
           </div>

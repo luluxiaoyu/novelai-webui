@@ -111,7 +111,7 @@ export const useGenerationStore = defineStore('generation', () => {
   });
 
   const history = ref<GeneratedImage[]>([]);
-  const promptHistory = ref<Array<{ id: string; prompt: string; negative_prompt: string; timestamp: number; note?: string; isFavorite?: boolean }>>([]);
+  const promptHistory = ref<Array<{ id: string; prompt: string; negative_prompt: string; timestamp: number; note?: string; isFavorite?: boolean; group?: string }>>([]);
   const isGenerating = ref(false);
   const streamPreviewUrl = ref<string | null>(null);
   const error = ref('');
@@ -518,6 +518,13 @@ isNew: true
     }
   };
 
+  const updatePromptGroup = (id: string, group: string) => {
+    const item = promptHistory.value.find(p => p.id === id);
+    if (item) {
+      item.group = group.trim() || undefined;
+    }
+  };
+
   const deleteHistory = (id: string) => {
     history.value = history.value.filter(i => i.id !== id);
     if (currentImage.value?.id === id) {
@@ -555,6 +562,7 @@ isNew: true
     deletePromptHistory, 
     toggleFavoritePrompt,
     updatePromptNote,
+    updatePromptGroup,
     deleteHistory,
     clearHistory,
     clearFilteredHistory
