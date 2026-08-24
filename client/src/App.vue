@@ -4,7 +4,7 @@ import { useGenerationStore } from './stores/generation';
 import { saveAs } from 'file-saver';
 import { computed, ref, onMounted } from 'vue';
 import { useDark, useToggle } from '@vueuse/core';
-import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, Sparkles, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Star } from 'lucide-vue-next';
+import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, Sparkles, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Star, Check } from 'lucide-vue-next';
 
 const authStore = useAuthStore();
 const genStore = useGenerationStore();
@@ -17,6 +17,8 @@ const showPromptHistory = ref(false);
 const mobileTab = ref<'canvas' | 'controls' | 'history'>('canvas');
 const historyFilter = ref('today');
 const promptFilter = ref('all');
+const paramsCopied = ref(false);
+const imageCopied = ref(false);
 
 const filteredHistory = computed(() => {
   const now = new Date();
@@ -362,6 +364,30 @@ const handleLogin = async () => {
 const downloadImage = () => {
   if (genStore.currentImage) {
     saveAs(genStore.currentImage.url, `nai_${genStore.currentImage.id}.png`);
+  }
+};
+
+const handleUseParams = () => {
+  if (genStore.currentImage) {
+    genStore.useParams(genStore.currentImage);
+    paramsCopied.value = true;
+    setTimeout(() => { paramsCopied.value = false; }, 2000);
+  }
+};
+
+const copyImageToClipboard = async () => {
+  if (genStore.currentImage) {
+    try {
+      const response = await fetch(genStore.currentImage.url);
+      const blob = await response.blob();
+      await navigator.clipboard.write([
+        new ClipboardItem({ [blob.type]: blob })
+      ]);
+      imageCopied.value = true;
+      setTimeout(() => { imageCopied.value = false; }, 2000);
+    } catch (err) {
+      console.error('Failed to copy image:', err);
+    }
   }
 };
 </script>
@@ -798,11 +824,16 @@ const downloadImage = () => {
 
             <!-- 浮动操作栏 -->
             <div class="absolute bottom-4 right-4 flex gap-2 z-20">
-              <button @click="downloadImage" class="bg-white/90 hover:bg-blue-50 dark:bg-gray-900/90 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 p-2.5 rounded-xl shadow-lg transition" title="保存高清原图">
+              <button @click="downloadImage" class="bg-white/90 hover:bg-blue-50 dark:bg-gray-900/90 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 p-2.5 rounded-xl shadow-lg transition" title="下载原图">
                 <Download class="w-5 h-5" />
               </button>
-              <button @click="genStore.useParams(genStore.currentImage)" class="bg-white/90 hover:bg-blue-50 dark:bg-gray-900/90 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 p-2.5 rounded-xl shadow-lg transition" title="复用此图参数">
-                <Copy class="w-5 h-5" />
+              <button @click="copyImageToClipboard" class="bg-white/90 hover:bg-blue-50 dark:bg-gray-900/90 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 p-2.5 rounded-xl shadow-lg transition" title="复制图像到剪贴板">
+                <Check v-if="imageCopied" class="w-5 h-5 text-green-500" />
+                <Copy v-else class="w-5 h-5" />
+              </button>
+              <button @click="handleUseParams" class="bg-white/90 hover:bg-blue-50 dark:bg-gray-900/90 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 p-2.5 rounded-xl shadow-lg transition" title="复用此图全部参数">
+                <Check v-if="paramsCopied" class="w-5 h-5 text-green-500" />
+                <SlidersHorizontal v-else class="w-5 h-5" />
               </button>
             </div>
           </template>
