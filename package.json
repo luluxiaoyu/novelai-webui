@@ -5,7 +5,9 @@
   "scripts": {
     "dev:server": "pnpm --filter server run dev",
     "dev:client": "pnpm --filter client run dev",
-    "dev": "concurrently \"pnpm dev:server\" \"pnpm dev:client\""
+    "dev": "concurrently \"pnpm dev:server\" \"pnpm dev:client\"",
+    "build": "pnpm --filter client run build",
+    "start": "pnpm --filter server run dev"
   },
   "devDependencies": {
     "concurrently": "^10.0.5"

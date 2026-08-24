@@ -14,11 +14,22 @@ app.use(encryptionMiddleware);
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+import path from 'path';
+import fs from 'fs';
+
 app.use('/api', apiRoutes);
 
-app.get('/', (req, res) => {
-  res.send('NovelAI Proxy Server is running');
-});
+const clientDistPath = path.resolve(import.meta.dirname, '../../client/dist');
+if (fs.existsSync(clientDistPath)) {
+  app.use(express.static(clientDistPath));
+  app.get(/^(?!\/api).+/, (req, res) => {
+    res.sendFile(path.join(clientDistPath, 'index.html'));
+  });
+} else {
+  app.get('/', (req, res) => {
+    res.send('NovelAI Proxy Server is running (Frontend build not found)');
+  });
+}
 
 // 全局异常捕获，防止服务端进程静默崩溃
 process.on('uncaughtException', (err) => {
