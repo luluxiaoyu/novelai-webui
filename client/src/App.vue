@@ -8,7 +8,7 @@ import { useDark, useToggle } from '@vueuse/core';
 import JSZip from 'jszip';
 import CustomSelect from './components/CustomSelect.vue';
 import { parsePngMetadata, type ParsedImageMetadata } from './utils/pngMetadata';
-import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud, Cloud, Wifi, Sparkles, ChevronDown, ChevronUp, RotateCcw, FileText } from 'lucide-vue-next';
+import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud, Cloud, Wifi, Sparkles, ChevronDown, ChevronUp, RotateCcw, FileText, Plus, Minus } from 'lucide-vue-next';
 
 const authStore = useAuthStore();
 const genStore = useGenerationStore();
@@ -373,12 +373,20 @@ const handleWheel = (e: WheelEvent) => {
   // 优化缩放灵敏度（降低4倍，使用平滑对数/比例增量）
   const zoomFactor = e.deltaY > 0 ? 0.95 : 1.05;
   const newScale = imgScale.value * zoomFactor;
-  imgScale.value = Math.max(0.2, Math.min(5, Math.round(newScale * 100) / 100));
+  imgScale.value = Math.max(0.2, Math.min(6, Math.round(newScale * 100) / 100));
 };
 
 const resetZoom = () => {
   imgScale.value = 1;
   imgTranslate.value = { x: 0, y: 0 };
+};
+
+const zoomIn = () => {
+  imgScale.value = Math.min(6, Math.round((imgScale.value * 1.25) * 100) / 100);
+};
+
+const zoomOut = () => {
+  imgScale.value = Math.max(0.2, Math.round((imgScale.value / 1.25) * 100) / 100);
 };
 
 const startPan = (e: MouseEvent) => {
@@ -397,6 +405,84 @@ const doPan = (e: MouseEvent) => {
 
 const stopPan = () => {
   isPanning.value = false;
+};
+
+// 移动端多指触控缩放与单指平移
+let touchStartDistance = 0;
+let touchStartScale = 1;
+let isTouchPanning = false;
+
+const handleTouchStart = (e: TouchEvent) => {
+  if (showMaskEditor.value && e.touches.length === 1) return;
+
+  if (e.touches.length === 1) {
+    isTouchPanning = true;
+    const t = e.touches[0];
+    panStart.value = {
+      x: t.clientX - imgTranslate.value.x,
+      y: t.clientY - imgTranslate.value.y
+    };
+  } else if (e.touches.length === 2) {
+    isTouchPanning = false;
+    const t1 = e.touches[0];
+    const t2 = e.touches[1];
+    touchStartDistance = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+    touchStartScale = imgScale.value;
+  }
+};
+
+const handleTouchMove = (e: TouchEvent) => {
+  if (showMaskEditor.value && e.touches.length === 1) return;
+
+  if (e.touches.length === 1 && isTouchPanning) {
+    const t = e.touches[0];
+    imgTranslate.value = {
+      x: t.clientX - panStart.value.x,
+      y: t.clientY - panStart.value.y
+    };
+  } else if (e.touches.length === 2 && touchStartDistance > 0) {
+    const t1 = e.touches[0];
+    const t2 = e.touches[1];
+    const currentDistance = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+    const scaleRatio = currentDistance / touchStartDistance;
+    const newScale = Math.max(0.2, Math.min(6, touchStartScale * scaleRatio));
+    imgScale.value = Math.round(newScale * 100) / 100;
+  }
+};
+
+const handleTouchEnd = (e: TouchEvent) => {
+  if (e.touches.length === 0) {
+    isTouchPanning = false;
+    touchStartDistance = 0;
+  } else if (e.touches.length === 1) {
+    touchStartDistance = 0;
+    const t = e.touches[0];
+    panStart.value = {
+      x: t.clientX - imgTranslate.value.x,
+      y: t.clientY - imgTranslate.value.y
+    };
+    isTouchPanning = true;
+  }
+};
+
+// 历史图片删除防误触状态 (2步确认)
+const deletingHistoryId = ref<string | null>(null);
+let deleteHistoryTimer: any = null;
+
+const handleDeleteHistory = (id: string) => {
+  if (deletingHistoryId.value === id) {
+    genStore.deleteHistory(id);
+    deletingHistoryId.value = null;
+    clearTimeout(deleteHistoryTimer);
+  } else {
+    deletingHistoryId.value = id;
+    clearTimeout(deleteHistoryTimer);
+    deleteHistoryTimer = setTimeout(() => {
+      if (deletingHistoryId.value === id) {
+        deletingHistoryId.value = null;
+      }
+    }, 3000);
+  }
 };
 
 const isDraggingOver = ref(false);
@@ -1369,20 +1455,33 @@ watch(
         class="flex-1 flex flex-col min-w-0 h-full relative overflow-hidden bg-gray-100 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-inner transition-colors lg:flex"
       >
         <!-- 顶部缩放与重置控制条 -->
-        <div class="absolute top-4 left-4 z-20 flex items-center gap-2 bg-white/80 dark:bg-gray-900/80 backdrop-blur px-3 py-1.5 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm text-xs">
-          <span class="font-mono text-gray-600 dark:text-gray-300 font-medium">缩放: {{ Math.round(imgScale * 100) }}%</span>
-          <button @click="resetZoom" class="px-2 py-0.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 rounded text-gray-700 dark:text-gray-300 transition">自适应</button>
-          <span class="text-gray-400 text-[10px] hidden sm:inline">滚轮平滑缩放 / 拖拽移动</span>
+        <div class="absolute top-4 left-4 z-20 flex items-center gap-1.5 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md px-2.5 py-1.5 rounded-xl border border-gray-200 dark:border-gray-800 shadow-md text-xs">
+          <button @click="zoomOut" class="p-1 hover:bg-gray-200 dark:hover:bg-gray-800 rounded text-gray-700 dark:text-gray-300 transition" title="缩小">
+            <Minus class="w-3.5 h-3.5" />
+          </button>
+          <span class="font-mono text-gray-700 dark:text-gray-200 font-semibold px-1 min-w-[3.2rem] text-center">{{ Math.round(imgScale * 100) }}%</span>
+          <button @click="zoomIn" class="p-1 hover:bg-gray-200 dark:hover:bg-gray-800 rounded text-gray-700 dark:text-gray-300 transition" title="放大">
+            <Plus class="w-3.5 h-3.5" />
+          </button>
+          <div class="w-px h-3.5 bg-gray-200 dark:bg-gray-700 mx-0.5"></div>
+          <button @click="resetZoom" class="px-2 py-0.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 rounded text-gray-700 dark:text-gray-300 transition text-[11px] font-medium flex items-center gap-1" title="自适应居中">
+            <RotateCcw class="w-3 h-3" />
+            自适应
+          </button>
+          <span class="text-gray-400 text-[10px] hidden md:inline ml-1">双指缩放 / 滚轮 / 拖拽</span>
         </div>
 
         <!-- 交互画布容器 -->
         <div 
-          class="flex-1 w-full h-full flex items-center justify-center overflow-hidden cursor-grab active:cursor-grabbing select-none"
+          class="flex-1 w-full h-full flex items-center justify-center overflow-hidden cursor-grab active:cursor-grabbing select-none touch-none"
           @wheel="handleWheel"
           @mousedown="startPan"
           @mousemove="doPan"
           @mouseup="stopPan"
           @mouseleave="stopPan"
+          @touchstart="handleTouchStart"
+          @touchmove="handleTouchMove"
+          @touchend="handleTouchEnd"
         >
           <!-- 局部重绘 涂鸦模式 -->
           <template v-if="genStore.params.image && showMaskEditor">
@@ -1406,16 +1505,16 @@ watch(
               ></canvas>
             </div>
             
-            <!-- 涂鸦悬浮工具栏 -->
-            <div class="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border border-gray-200 dark:border-gray-800 p-3 rounded-2xl shadow-2xl z-30">
+            <!-- 涂鸦悬浮工具栏 (移动端避免被底部导航遮挡，设置 bottom-24) -->
+            <div class="absolute bottom-24 sm:bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 sm:gap-4 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border border-gray-200 dark:border-gray-800 p-2.5 sm:p-3 rounded-2xl shadow-2xl z-30 max-w-[92vw] overflow-x-auto">
               <div class="flex items-center gap-2">
                 <span class="text-xs text-gray-500 whitespace-nowrap font-medium">画笔大小:</span>
-                <input type="range" v-model.number="brushSize" min="5" max="150" class="w-32 accent-blue-600" />
+                <input type="range" v-model.number="brushSize" min="5" max="150" class="w-24 sm:w-32 accent-blue-600" />
                 <span class="font-mono text-xs w-6 text-gray-600 dark:text-gray-300">{{ brushSize }}</span>
               </div>
               <div class="w-px h-6 bg-gray-200 dark:bg-gray-700"></div>
-              <button @click="resetMask" class="text-xs text-gray-600 hover:text-red-500 font-medium transition">重置</button>
-              <button @click="exportMask(); showMaskEditor = false; mobileTab = 'controls'" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-1.5 rounded-lg shadow-md shadow-blue-500/20 transition">
+              <button @click="resetMask" class="text-xs text-gray-600 hover:text-red-500 font-medium transition whitespace-nowrap">重置</button>
+              <button @click="exportMask(); showMaskEditor = false; mobileTab = 'controls'" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 sm:px-4 py-1.5 rounded-lg shadow-md shadow-blue-500/20 transition whitespace-nowrap">
                 保存涂鸦
               </button>
             </div>
@@ -1428,7 +1527,7 @@ watch(
             >
               <img :src="genStore.streamPreviewUrl" class="max-w-[85vw] max-h-[85vh] object-contain drop-shadow-2xl pointer-events-none" />
             </div>
-            <div class="absolute bottom-4 left-4 bg-blue-600/90 text-white text-xs px-3 py-1.5 rounded-full backdrop-blur flex items-center gap-1.5 shadow-lg animate-pulse z-20">
+            <div class="absolute bottom-24 sm:bottom-4 left-4 bg-blue-600/90 text-white text-xs px-3 py-1.5 rounded-full backdrop-blur flex items-center gap-1.5 shadow-lg animate-pulse z-20">
               <Loader2 class="w-3.5 h-3.5 animate-spin" />
               正在流式去噪渲染...
             </div>
@@ -1457,16 +1556,16 @@ watch(
               待重绘
             </div>
 
-            <!-- 浮动操作栏 -->
-            <div class="absolute bottom-4 right-4 flex gap-2 z-20">
-              <button @click="downloadImage" class="bg-white/90 hover:bg-blue-50 dark:bg-gray-900/90 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 p-2.5 rounded-xl shadow-lg transition" title="下载原图">
+            <!-- 浮动操作栏 (移动端避免被底部胶囊导航遮挡，设置 bottom-24) -->
+            <div class="absolute bottom-24 sm:bottom-4 right-4 flex items-center gap-2 z-30">
+              <button @click="downloadImage" class="bg-white/95 hover:bg-blue-50 dark:bg-gray-900/95 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 p-2.5 rounded-xl shadow-xl transition backdrop-blur-md" title="下载原图">
                 <Download class="w-5 h-5" />
               </button>
-              <button @click="copyImageToClipboard" class="bg-white/90 hover:bg-blue-50 dark:bg-gray-900/90 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 p-2.5 rounded-xl shadow-lg transition" title="复制图像到剪贴板">
+              <button @click="copyImageToClipboard" class="bg-white/95 hover:bg-blue-50 dark:bg-gray-900/95 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 p-2.5 rounded-xl shadow-xl transition backdrop-blur-md" title="复制图像到剪贴板">
                 <Check v-if="imageCopied" class="w-5 h-5 text-green-500" />
                 <Copy v-else class="w-5 h-5" />
               </button>
-              <button @click="handleUseParams" class="bg-white/90 hover:bg-blue-50 dark:bg-gray-900/90 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 p-2.5 rounded-xl shadow-lg transition" title="复用此图全部参数">
+              <button @click="handleUseParams" class="bg-white/95 hover:bg-blue-50 dark:bg-gray-900/95 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 p-2.5 rounded-xl shadow-xl transition backdrop-blur-md" title="复用此图全部参数">
                 <Check v-if="paramsCopied" class="w-5 h-5 text-green-500" />
                 <SlidersHorizontal v-else class="w-5 h-5" />
               </button>
@@ -1536,11 +1635,13 @@ watch(
                 复用
               </button>
               <button 
-                @click.stop="genStore.deleteHistory(item.id)" 
-                class="bg-white/90 hover:bg-red-600 hover:text-white text-red-600 p-1.5 rounded-md shadow transition"
-                title="删除"
+                @click.stop="handleDeleteHistory(item.id)" 
+                class="p-1.5 rounded-md text-[10px] font-medium shadow transition flex items-center gap-0.5"
+                :class="deletingHistoryId === item.id ? 'bg-red-600 text-white animate-pulse font-bold' : 'bg-white/90 hover:bg-red-600 hover:text-white text-red-600'"
+                :title="deletingHistoryId === item.id ? '再次点击确认删除' : '删除'"
               >
-                <Trash2 class="w-3 h-3" />
+                <span v-if="deletingHistoryId === item.id">确认删除?</span>
+                <Trash2 v-else class="w-3 h-3" />
               </button>
             </div>
           </div>
