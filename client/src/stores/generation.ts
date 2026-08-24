@@ -100,8 +100,8 @@ export const useGenerationStore = defineStore('generation', () => {
     width: 832,
     height: 1216,
     steps: 28,
-    sampler: 'k_euler',
-    scale: 5,
+    sampler: 'k_euler_ancestral',
+    scale: 5.5,
     seed: -1,
     sm: false,
     sm_dyn: false,
@@ -177,19 +177,37 @@ export const useGenerationStore = defineStore('generation', () => {
 
       if (isV4OrV5) {
         parameters.use_coords = false;
+        parameters.noise_schedule = "karras";
+        parameters.skip_cfg_above_sigma = 19.343056794463642;
+        parameters.cfg_sched_eligibility = "enable_for_post_summer_samplers";
+        parameters.prefer_brownian = true;
+        parameters.deliberate_euler_ancestral_bug = false;
+        parameters.uncond_per_vibe = true;
+        parameters.wonky_vibe_correlation = true;
+        parameters.legacy_v3_extend = false;
+        parameters.controlnet_strength = 1;
+
+        // 同步底层 uc 与 v4_negative_prompt
+        const negPrompt = params.negative_prompt || '';
+        parameters.uc = negPrompt;
+
         parameters.v4_prompt = {
           caption: {
             base_caption: params.prompt,
             char_captions: []
           },
           use_coords: false,
-          use_order: true
+          use_order: true,
+          legacy_uc: false
         };
         parameters.v4_negative_prompt = {
           caption: {
-            base_caption: params.negative_prompt || '',
+            base_caption: negPrompt,
             char_captions: []
-          }
+          },
+          use_coords: false,
+          use_order: false,
+          legacy_uc: false
         };
         
         if (action === 'infill') {
@@ -197,19 +215,16 @@ export const useGenerationStore = defineStore('generation', () => {
           parameters.ucPresetId = "heavy";
           parameters.qualityPresetId = "standard";
           parameters.autoSmea = false;
-          parameters.controlnet_strength = 1;
           parameters.legacy = false;
           parameters.add_original_image = true;
           parameters.cfg_rescale = 0;
-          parameters.noise_schedule = "native";
         } else {
           parameters.params_version = 3;
           parameters.qualityToggle = true;
-          parameters.deliberate_euler_ancestral_bug = false;
-          parameters.prefer_brownian = true;
         }
       } else {
         parameters.negative_prompt = params.negative_prompt;
+        parameters.uc = params.negative_prompt || '';
         parameters.sm = params.sm;
         parameters.sm_dyn = params.sm_dyn;
         if (action === 'infill') {

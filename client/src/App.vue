@@ -640,6 +640,15 @@ const copyImageToClipboard = async () => {
   }
 };
 
+const fillOfficialUC = () => {
+  const officialUC = "nsfw, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page";
+  if (!genStore.params.negative_prompt.trim()) {
+    genStore.params.negative_prompt = officialUC;
+  } else if (!genStore.params.negative_prompt.includes('chromatic aberration')) {
+    genStore.params.negative_prompt = `${officialUC}, ${genStore.params.negative_prompt}`;
+  }
+};
+
 watch(
   () => authStore.siteUnlocked,
   (unlocked) => {
@@ -876,7 +885,16 @@ watch(
           </div>
 
           <div>
-            <label class="block text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 mb-1.5">反向提示词 (Negative Prompt)</label>
+            <div class="flex justify-between items-center mb-1.5">
+              <label class="block text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">反向提示词 (Negative Prompt)</label>
+              <button 
+                @click="fillOfficialUC" 
+                class="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium flex items-center gap-1"
+                title="一键填入官方 Heavy UC 负向画质与色差抑制预设"
+              >
+                + 官方画质预设
+              </button>
+            </div>
             <textarea 
               v-model="genStore.params.negative_prompt" 
               rows="2" 
