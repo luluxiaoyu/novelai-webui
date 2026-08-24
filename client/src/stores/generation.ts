@@ -19,6 +19,12 @@ export interface GenerationParams {
   sm_dyn: boolean;
   dynamic_thresholding: boolean;
   enable_stream: boolean;
+  // Advanced Sampling & Noise Controls
+  noise_schedule: string;
+  cfg_rescale: number;
+  uncond_scale: number;
+  skip_cfg_above_sigma: number | null;
+  prefer_brownian: boolean;
   // Inpaint / Img2img
   image?: string; // Base64
   mask?: string;  // Base64
@@ -107,6 +113,11 @@ export const useGenerationStore = defineStore('generation', () => {
     sm_dyn: false,
     dynamic_thresholding: false,
     enable_stream: false,
+    noise_schedule: 'karras',
+    cfg_rescale: 0,
+    uncond_scale: 0,
+    skip_cfg_above_sigma: 19.34,
+    prefer_brownian: true,
     strength: 0.7,
     noise: 0.0,
   });
@@ -163,6 +174,10 @@ export const useGenerationStore = defineStore('generation', () => {
         seed: seedToUse,
         n_samples: 1,
         dynamic_thresholding: params.dynamic_thresholding,
+        noise_schedule: params.noise_schedule || 'karras',
+        cfg_rescale: params.cfg_rescale ?? 0,
+        uncond_scale: params.uncond_scale ?? 0,
+        prefer_brownian: params.prefer_brownian ?? true,
       };
 
       if (params.image) {
@@ -177,15 +192,25 @@ export const useGenerationStore = defineStore('generation', () => {
 
       if (isV4OrV5) {
         parameters.use_coords = false;
-        parameters.noise_schedule = "karras";
-        parameters.skip_cfg_above_sigma = 19.343056794463642;
+        parameters.noise_schedule = params.noise_schedule || "karras";
+        
+        if (params.skip_cfg_above_sigma !== undefined && params.skip_cfg_above_sigma !== null && params.skip_cfg_above_sigma > 0) {
+          parameters.skip_cfg_above_sigma = params.skip_cfg_above_sigma;
+        } else if (params.skip_cfg_above_sigma === 0 || params.skip_cfg_above_sigma === null) {
+          parameters.skip_cfg_above_sigma = null;
+        } else {
+          parameters.skip_cfg_above_sigma = 19.343056794463642;
+        }
+        
         parameters.cfg_sched_eligibility = "enable_for_post_summer_samplers";
-        parameters.prefer_brownian = true;
+        parameters.prefer_brownian = params.prefer_brownian ?? true;
         parameters.deliberate_euler_ancestral_bug = false;
         parameters.uncond_per_vibe = true;
         parameters.wonky_vibe_correlation = true;
         parameters.legacy_v3_extend = false;
         parameters.controlnet_strength = 1;
+        parameters.cfg_rescale = params.cfg_rescale ?? 0;
+        parameters.uncond_scale = params.uncond_scale ?? 0;
 
         // 同步底层 uc 与 v4_negative_prompt
         const negPrompt = params.negative_prompt || '';
@@ -560,6 +585,23 @@ export const useGenerationStore = defineStore('generation', () => {
     }
   };
 
+  const resetAdvancedParams = () => {
+    params.steps = 28;
+    params.sampler = 'k_euler_ancestral';
+    params.scale = 5.5;
+    params.seed = -1;
+    params.noise_schedule = 'karras';
+    params.cfg_rescale = 0;
+    params.uncond_scale = 0;
+    params.skip_cfg_above_sigma = 19.34;
+    params.prefer_brownian = true;
+    params.dynamic_thresholding = false;
+    params.sm = false;
+    params.sm_dyn = false;
+    params.strength = 0.7;
+    params.noise = 0.0;
+  };
+
   const clearHistory = () => {
     history.value = [];
     currentImage.value = null;
@@ -595,7 +637,8 @@ export const useGenerationStore = defineStore('generation', () => {
     updatePromptGroup,
     deleteHistory,
     clearHistory,
-    clearFilteredHistory
+    clearFilteredHistory,
+    resetAdvancedParams
   };
 }, {
   persist: [

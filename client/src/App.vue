@@ -7,7 +7,7 @@ import { computed, ref, onMounted, watch } from 'vue';
 import { useDark, useToggle } from '@vueuse/core';
 import JSZip from 'jszip';
 import CustomSelect from './components/CustomSelect.vue';
-import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud, Cloud, Wifi, Sparkles } from 'lucide-vue-next';
+import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud, Cloud, Wifi, Sparkles, ChevronDown, ChevronUp, RotateCcw } from 'lucide-vue-next';
 
 const authStore = useAuthStore();
 const genStore = useGenerationStore();
@@ -258,12 +258,21 @@ const modelOptions = [
 ];
 
 const samplerOptions = [
+  { value: 'k_euler_ancestral', label: 'Euler Ancestral (推荐)' },
   { value: 'k_euler', label: 'Euler' },
-  { value: 'k_euler_ancestral', label: 'Euler Ancestral' },
   { value: 'k_dpmpp_2m', label: 'DPM++ 2M' },
   { value: 'k_dpmpp_sde', label: 'DPM++ SDE' },
   { value: 'ddim', label: 'DDIM' }
 ];
+
+const noiseScheduleOptions = [
+  { value: 'karras', label: 'Karras (推荐平滑)' },
+  { value: 'exponential', label: 'Exponential (指数)' },
+  { value: 'polyexponential', label: 'Polyexponential (多项式)' },
+  { value: 'native', label: 'Native (原生)' }
+];
+
+const showAdvanced = ref(false);
 
 const historyFilterOptions = [
   { value: 'today', label: '今天' },
@@ -990,6 +999,18 @@ watch(
 
         <!-- 参数设置 -->
         <div class="flex flex-col gap-4 pt-4 border-t border-gray-200 dark:border-gray-800 transition-colors">
+          <div class="flex justify-between items-center">
+            <span class="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">参数设置</span>
+            <button 
+              @click="genStore.resetAdvancedParams()" 
+              class="text-xs text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 flex items-center gap-1 font-medium transition"
+              title="重置采样器、步数、CFG、噪声调度等高级参数至默认值（保留提示词与分辨率）"
+            >
+              <RotateCcw class="w-3 h-3" />
+              <span>重置参数</span>
+            </button>
+          </div>
+
           <div>
             <label class="block text-xs font-semibold mb-1.5">模型 (Model)</label>
             <CustomSelect v-model="genStore.params.model" :options="modelOptions" />
@@ -1051,6 +1072,120 @@ watch(
                   :class="genStore.params.enable_stream ? 'translate-x-2' : '-translate-x-2'"
                 />
               </button>
+            </div>
+
+            <!-- 高级采样与降噪控制折叠面板 -->
+            <div class="border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden transition-colors">
+              <button 
+                @click="showAdvanced = !showAdvanced" 
+                class="w-full flex items-center justify-between p-2.5 bg-gray-50/80 dark:bg-gray-900/60 hover:bg-gray-100 dark:hover:bg-gray-850 text-xs font-medium text-gray-700 dark:text-gray-300 transition-colors"
+              >
+                <div class="flex items-center gap-1.5">
+                  <SlidersHorizontal class="w-3.5 h-3.5 text-blue-500" />
+                  <span>高级采样与降噪设置</span>
+                </div>
+                <div class="flex items-center gap-1 text-[11px] text-gray-400">
+                  <span>{{ showAdvanced ? '收起' : '展开' }}</span>
+                  <ChevronDown v-if="!showAdvanced" class="w-3.5 h-3.5" />
+                  <ChevronUp v-else class="w-3.5 h-3.5" />
+                </div>
+              </button>
+
+              <div v-if="showAdvanced" class="p-3 bg-white dark:bg-gray-950 flex flex-col gap-3.5 border-t border-gray-200 dark:border-gray-800">
+                <!-- 噪声调度 -->
+                <div>
+                  <div class="flex justify-between items-center mb-1">
+                    <label class="text-xs font-semibold text-gray-700 dark:text-gray-300">噪声调度 (Noise Schedule)</label>
+                  </div>
+                  <CustomSelect v-model="genStore.params.noise_schedule" :options="noiseScheduleOptions" />
+                </div>
+
+                <!-- CFG 截断 (Skip CFG Above Sigma) -->
+                <div>
+                  <div class="flex justify-between items-center mb-1">
+                    <label class="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                      CFG 截断阈值: 
+                      <span class="font-bold font-mono">{{ genStore.params.skip_cfg_above_sigma ?? '关闭' }}</span>
+                    </label>
+                    <button 
+                      @click="genStore.params.skip_cfg_above_sigma = genStore.params.skip_cfg_above_sigma ? 0 : 19.34" 
+                      class="text-[10px] text-blue-500 hover:underline"
+                    >
+                      {{ genStore.params.skip_cfg_above_sigma ? '关闭截断' : '设为默认(19.34)' }}
+                    </button>
+                  </div>
+                  <input 
+                    type="range" 
+                    v-model.number="genStore.params.skip_cfg_above_sigma" 
+                    min="0" 
+                    max="30" 
+                    step="0.1" 
+                    class="w-full accent-blue-600" 
+                  />
+                  <span class="text-[10px] text-gray-400 mt-0.5 block">V4/V5 跳过高噪波初期 CFG 以避免发色灼烧与紫边 (0 为关闭)</span>
+                </div>
+
+                <!-- CFG Rescale -->
+                <div>
+                  <div class="flex justify-between items-center mb-1">
+                    <label class="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                      CFG 重缩放 (Rescale): 
+                      <span class="font-bold font-mono">{{ genStore.params.cfg_rescale || 0 }}</span>
+                    </label>
+                  </div>
+                  <input 
+                    type="range" 
+                    v-model.number="genStore.params.cfg_rescale" 
+                    min="0" 
+                    max="1" 
+                    step="0.05" 
+                    class="w-full accent-blue-600" 
+                  />
+                  <span class="text-[10px] text-gray-400 mt-0.5 block">高 Scale 时抑制过曝与对比度溢出 (默认 0.0)</span>
+                </div>
+
+                <!-- Uncond Scale -->
+                <div>
+                  <div class="flex justify-between items-center mb-1">
+                    <label class="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                      负向影响比重 (Uncond Scale): 
+                      <span class="font-bold font-mono">{{ genStore.params.uncond_scale || 0 }}</span>
+                    </label>
+                  </div>
+                  <input 
+                    type="range" 
+                    v-model.number="genStore.params.uncond_scale" 
+                    min="0" 
+                    max="1.5" 
+                    step="0.05" 
+                    class="w-full accent-blue-600" 
+                  />
+                  <span class="text-[10px] text-gray-400 mt-0.5 block">调节底层负向提示词的强度权重 (默认 0.0)</span>
+                </div>
+
+                <!-- 动态阈值化 (Decrisper) & 布朗噪声开关 -->
+                <div class="flex flex-col gap-2 pt-1 border-t border-gray-100 dark:border-gray-900">
+                  <label class="flex items-center justify-between cursor-pointer py-1">
+                    <span class="text-xs text-gray-700 dark:text-gray-300">布朗噪声 (Prefer Brownian)</span>
+                    <input type="checkbox" v-model="genStore.params.prefer_brownian" class="w-4 h-4 rounded text-blue-600 border-gray-300 focus:ring-blue-500" />
+                  </label>
+                  <label class="flex items-center justify-between cursor-pointer py-1">
+                    <span class="text-xs text-gray-700 dark:text-gray-300">动态阈值去伪影 (Decrisper)</span>
+                    <input type="checkbox" v-model="genStore.params.dynamic_thresholding" class="w-4 h-4 rounded text-blue-600 border-gray-300 focus:ring-blue-500" />
+                  </label>
+                </div>
+
+                <!-- 一键重置高级参数 -->
+                <div class="pt-1 border-t border-gray-100 dark:border-gray-900">
+                  <button 
+                    @click="genStore.resetAdvancedParams()" 
+                    class="w-full text-xs text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 bg-gray-100 dark:bg-gray-850 hover:bg-gray-200 dark:hover:bg-gray-800 py-2 px-3 rounded-lg border border-gray-200 dark:border-gray-700 transition flex items-center justify-center gap-1.5 font-medium"
+                  >
+                    <RotateCcw class="w-3.5 h-3.5" />
+                    <span>恢复高级参数为官方默认值</span>
+                  </button>
+                </div>
+              </div>
             </div>
 
             <template v-if="isV3">
