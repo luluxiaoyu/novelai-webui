@@ -3,11 +3,12 @@ import { useAuthStore } from './stores/auth';
 import { useGenerationStore } from './stores/generation';
 import { useWebDAVStore } from './stores/webdav';
 import { saveAs } from 'file-saver';
-import { computed, ref, onMounted, watch } from 'vue';
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
 import { useDark, useToggle } from '@vueuse/core';
 import JSZip from 'jszip';
 import CustomSelect from './components/CustomSelect.vue';
-import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud, Cloud, Wifi, Sparkles, ChevronDown, ChevronUp, RotateCcw } from 'lucide-vue-next';
+import { parsePngMetadata, type ParsedImageMetadata } from './utils/pngMetadata';
+import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud, Cloud, Wifi, Sparkles, ChevronDown, ChevronUp, RotateCcw, FileText } from 'lucide-vue-next';
 
 const authStore = useAuthStore();
 const genStore = useGenerationStore();
@@ -398,52 +399,151 @@ const stopPan = () => {
   isPanning.value = false;
 };
 
-const handleImageUpload = (e: Event) => {
-  const file = (e.target as HTMLInputElement).files?.[0];
-  if (file) {
+const isDraggingOver = ref(false);
+const showDropActionModal = ref(false);
+const droppedImageInfo = ref<{
+  file: File;
+  dataUrl: string;
+  processedDataUrl: string;
+  processedBase64: string;
+  targetWidth: number;
+  targetHeight: number;
+  metadata: ParsedImageMetadata;
+} | null>(null);
+
+let dragTimer: any = null;
+
+const onWindowDragOver = (e: DragEvent) => {
+  e.preventDefault();
+  if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files')) {
+    isDraggingOver.value = true;
+    clearTimeout(dragTimer);
+  }
+};
+
+const onWindowDragLeave = (e: DragEvent) => {
+  e.preventDefault();
+  dragTimer = setTimeout(() => {
+    isDraggingOver.value = false;
+  }, 100);
+};
+
+const onWindowDrop = async (e: DragEvent) => {
+  e.preventDefault();
+  isDraggingOver.value = false;
+
+  const files = e.dataTransfer?.files;
+  if (!files || files.length === 0) return;
+
+  const file = files[0];
+  if (!file.type.startsWith('image/')) return;
+
+  await handleDroppedFile(file);
+};
+
+const handleDroppedFile = async (file: File) => {
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const metadata = parsePngMetadata(arrayBuffer);
+
     const reader = new FileReader();
     reader.onload = () => {
-      const result = reader.result as string;
-      genStore.params.image = result.split(',')[1];
-      showMaskEditor.value = true;
-      mobileTab.value = 'canvas';
-
-      // 自动将生成宽高同步为上传底图的分辨率，并强制对齐到 64 的倍数
+      const rawDataUrl = reader.result as string;
       const img = new Image();
       img.onload = () => {
-        // NovelAI 强制要求分辨率是 64 的整数倍
-        const targetWidth = Math.round(img.width / 64) * 64;
-        const targetHeight = Math.round(img.height / 64) * 64;
-        genStore.params.width = targetWidth;
-        genStore.params.height = targetHeight;
+        // NovelAI 强制要求分辨率是 64 的整数倍，同时填充白底去除 Alpha 透明通道防止 VAE 绿屏
+        const targetWidth = Math.max(64, Math.round(img.width / 64) * 64);
+        const targetHeight = Math.max(64, Math.round(img.height / 64) * 64);
 
-        // 如果尺寸不符，重采样原图，防止 VAE 绿屏或后端报错
-        // 即使尺寸相符，如果是用户上传的文件，也通过 Canvas 去除透明通道（透明通道也会导致 VAE 绿屏）
         const resizeCanvas = document.createElement('canvas');
         resizeCanvas.width = targetWidth;
         resizeCanvas.height = targetHeight;
         const rctx = resizeCanvas.getContext('2d');
+        let processedDataUrl = rawDataUrl;
         if (rctx) {
-          // 强制填充白底，去除任何 Alpha 通道
           rctx.fillStyle = 'white';
           rctx.fillRect(0, 0, targetWidth, targetHeight);
           rctx.drawImage(img, 0, 0, targetWidth, targetHeight);
-          const dataUrl = resizeCanvas.toDataURL('image/png');
-          genStore.params.image = dataUrl.split(',')[1];
-          // 将刚上传的图设置为 currentImage，以便退出遮罩模式时能在中间展示
-          genStore.currentImage = {
-            id: 'uploaded-' + Date.now(),
-            url: dataUrl,
-            params: JSON.parse(JSON.stringify(genStore.params)),
-            timestamp: Date.now()
-          };
+          processedDataUrl = resizeCanvas.toDataURL('image/png');
         }
-      };
-      img.src = result;
 
-      initCanvas();
+        const processedBase64 = processedDataUrl.split(',')[1];
+
+        droppedImageInfo.value = {
+          file,
+          dataUrl: rawDataUrl,
+          processedDataUrl,
+          processedBase64,
+          targetWidth,
+          targetHeight,
+          metadata
+        };
+        showDropActionModal.value = true;
+      };
+      img.src = rawDataUrl;
     };
     reader.readAsDataURL(file);
+  } catch (err) {
+    console.error('Failed to process dropped image:', err);
+  }
+};
+
+const applyDropAction = (action: 'inpaint' | 'img2img' | 'metadata') => {
+  if (!droppedImageInfo.value) return;
+
+  const { processedDataUrl, processedBase64, targetWidth, targetHeight, metadata } = droppedImageInfo.value;
+
+  if (action === 'inpaint') {
+    genStore.params.image = processedBase64;
+    genStore.params.mask = undefined;
+    genStore.params.width = targetWidth;
+    genStore.params.height = targetHeight;
+    genStore.currentImage = {
+      id: 'uploaded-' + Date.now(),
+      url: processedDataUrl,
+      params: JSON.parse(JSON.stringify(genStore.params)),
+      timestamp: Date.now()
+    };
+    showMaskEditor.value = true;
+    initCanvas();
+    mobileTab.value = 'canvas';
+  } else if (action === 'img2img') {
+    genStore.params.image = processedBase64;
+    genStore.params.mask = undefined;
+    genStore.params.width = targetWidth;
+    genStore.params.height = targetHeight;
+    genStore.currentImage = {
+      id: 'uploaded-' + Date.now(),
+      url: processedDataUrl,
+      params: JSON.parse(JSON.stringify(genStore.params)),
+      timestamp: Date.now()
+    };
+    showMaskEditor.value = false;
+  } else if (action === 'metadata') {
+    if (metadata.prompt) genStore.params.prompt = metadata.prompt;
+    if (metadata.negative_prompt) genStore.params.negative_prompt = metadata.negative_prompt;
+    if (metadata.width) genStore.params.width = metadata.width;
+    if (metadata.height) genStore.params.height = metadata.height;
+    if (metadata.steps) genStore.params.steps = metadata.steps;
+    if (metadata.scale) genStore.params.scale = metadata.scale;
+    if (metadata.seed !== undefined) genStore.params.seed = metadata.seed;
+    if (metadata.sampler) genStore.params.sampler = metadata.sampler;
+    if (metadata.model) genStore.params.model = metadata.model;
+    if (metadata.noise_schedule) genStore.params.noise_schedule = metadata.noise_schedule;
+    if (metadata.cfg_rescale !== undefined) genStore.params.cfg_rescale = metadata.cfg_rescale;
+    if (metadata.uncond_scale !== undefined) genStore.params.uncond_scale = metadata.uncond_scale;
+    if (metadata.skip_cfg_above_sigma !== undefined) genStore.params.skip_cfg_above_sigma = metadata.skip_cfg_above_sigma;
+  }
+
+  showDropActionModal.value = false;
+  droppedImageInfo.value = null;
+};
+
+const handleImageUpload = (e: Event) => {
+  const file = (e.target as HTMLInputElement).files?.[0];
+  if (file) {
+    handleDroppedFile(file);
+    (e.target as HTMLInputElement).value = '';
   }
 };
 
@@ -585,6 +685,10 @@ const clearInpaint = () => {
 
 // 页面加载或刷新时，自动探测服务端是否要求密钥验证，并重置可能挂起的生成状态、清空临时底图与遮罩，并重新获取最新余额
 onMounted(async () => {
+  window.addEventListener('dragover', onWindowDragOver);
+  window.addEventListener('dragleave', onWindowDragLeave);
+  window.addEventListener('drop', onWindowDrop);
+
   await authStore.checkSiteAuthStatus();
 
   genStore.isGenerating = false;
@@ -600,6 +704,12 @@ onMounted(async () => {
   if (authStore.siteUnlocked && authStore.token) {
     authStore.fetchUserData();
   }
+});
+
+onUnmounted(() => {
+  window.removeEventListener('dragover', onWindowDragOver);
+  window.removeEventListener('dragleave', onWindowDragLeave);
+  window.removeEventListener('drop', onWindowDrop);
 });
 
 const handleVerifyAccess = async () => {
@@ -1432,7 +1542,7 @@ watch(
     </main>
 
     <!-- 历史提示词弹窗 -->
-    <div v-if="showPromptHistory" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in" @click.self="showPromptHistory = false">
+    <div v-if="showPromptHistory" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
       <div class="bg-white dark:bg-gray-900 w-full max-w-5xl rounded-2xl shadow-2xl flex max-h-[85vh] h-[85vh] overflow-hidden">
         
         <!-- 左侧过滤器和搜索 -->
@@ -1562,7 +1672,7 @@ watch(
       </div>
     </div>
     <!-- 数据管理弹窗 -->
-    <div v-if="showDataModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in" @click.self="showDataModal = false">
+    <div v-if="showDataModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
       <div class="bg-white dark:bg-gray-900 w-full max-w-md rounded-2xl shadow-2xl flex flex-col overflow-hidden">
         <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-950/50">
           <h3 class="text-base font-semibold flex items-center gap-2">
@@ -1683,6 +1793,118 @@ watch(
             </label>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- 拖入图片操作选择弹窗 (点击外部不关闭，仅可通过右上角 X 或取消关闭) -->
+    <div v-if="showDropActionModal && droppedImageInfo" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in select-none">
+      <div class="bg-white dark:bg-gray-900 w-full max-w-lg rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-gray-800">
+        
+        <!-- 头部 -->
+        <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gray-50/80 dark:bg-gray-950/50">
+          <div class="flex items-center gap-2">
+            <div class="p-1.5 bg-blue-100 dark:bg-blue-900/40 rounded-lg text-blue-600 dark:text-blue-400">
+              <ImageIcon class="w-4 h-4" />
+            </div>
+            <h3 class="text-base font-semibold">图片导入选项</h3>
+          </div>
+          <button @click="showDropActionModal = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 transition">
+            <X class="w-5 h-5" />
+          </button>
+        </div>
+
+        <!-- 图片预览与信息 -->
+        <div class="p-5 flex flex-col gap-4">
+          <div class="flex gap-4 p-3 bg-gray-50 dark:bg-gray-950/60 rounded-xl border border-gray-200/60 dark:border-gray-800">
+            <div class="w-20 h-20 rounded-lg overflow-hidden bg-black/10 shrink-0 border border-gray-200 dark:border-gray-700 flex items-center justify-center">
+              <img :src="droppedImageInfo.dataUrl" class="w-full h-full object-contain" />
+            </div>
+            <div class="flex-1 flex flex-col justify-center gap-1 text-xs">
+              <span class="font-medium text-gray-900 dark:text-gray-100 truncate max-w-[280px]" :title="droppedImageInfo.file.name">
+                {{ droppedImageInfo.file.name }}
+              </span>
+              <span class="text-gray-500 dark:text-gray-400">
+                分辨率: {{ droppedImageInfo.targetWidth }} × {{ droppedImageInfo.targetHeight }}
+              </span>
+              <div v-if="droppedImageInfo.metadata.hasMetadata" class="flex items-center gap-1 text-green-600 dark:text-green-400 text-[11px] font-medium mt-0.5">
+                <Check class="w-3.5 h-3.5" />
+                <span>已识别到 NovelAI 提示词/参数元数据</span>
+              </div>
+              <div v-else class="text-amber-500 dark:text-amber-400 text-[11px] mt-0.5">
+                未检测到元数据 (可直接作为底图重绘/生图)
+              </div>
+            </div>
+          </div>
+
+          <p class="text-xs text-gray-500 dark:text-gray-400">请选择您希望对该图片进行的操作：</p>
+
+          <!-- 三个选项卡片 -->
+          <div class="grid grid-cols-1 gap-2.5">
+            <!-- 选项1：局部重绘 -->
+            <button 
+              @click="applyDropAction('inpaint')" 
+              class="w-full p-3.5 rounded-xl border border-gray-200 dark:border-gray-800 hover:border-purple-500 dark:hover:border-purple-500 bg-white dark:bg-gray-900 hover:bg-purple-50/40 dark:hover:bg-purple-950/20 text-left transition flex items-start gap-3 group"
+            >
+              <div class="p-2 bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 rounded-xl group-hover:scale-105 transition shrink-0">
+                <Paintbrush class="w-4 h-4" />
+              </div>
+              <div class="flex-1">
+                <div class="font-semibold text-xs text-gray-900 dark:text-gray-100 group-hover:text-purple-600 dark:group-hover:text-purple-400 flex items-center justify-between">
+                  <span>🎨 载入为局部重绘 (Inpainting)</span>
+                  <span class="text-[10px] text-purple-600 dark:text-purple-400 font-normal">进入涂抹画板</span>
+                </div>
+                <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">载入为此图片的重绘底图，并直接打开遮罩涂抹编辑器</p>
+              </div>
+            </button>
+
+            <!-- 选项2：图生图 -->
+            <button 
+              @click="applyDropAction('img2img')" 
+              class="w-full p-3.5 rounded-xl border border-gray-200 dark:border-gray-800 hover:border-blue-500 dark:hover:border-blue-500 bg-white dark:bg-gray-900 hover:bg-blue-50/40 dark:hover:bg-blue-950/20 text-left transition flex items-start gap-3 group"
+            >
+              <div class="p-2 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 rounded-xl group-hover:scale-105 transition shrink-0">
+                <Layers class="w-4 h-4" />
+              </div>
+              <div class="flex-1">
+                <div class="font-semibold text-xs text-gray-900 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 flex items-center justify-between">
+                  <span>🖼️ 载入为图生图 (Image to Image)</span>
+                  <span class="text-[10px] text-blue-600 dark:text-blue-400 font-normal">垫图生成</span>
+                </div>
+                <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">作为垫图底图，可通过强度和噪点控制新图与原图的相似程度</p>
+              </div>
+            </button>
+
+            <!-- 选项3：识别元数据并填入参数 -->
+            <button 
+              @click="applyDropAction('metadata')" 
+              :disabled="!droppedImageInfo.metadata.hasMetadata"
+              class="w-full p-3.5 rounded-xl border border-gray-200 dark:border-gray-800 hover:border-emerald-500 dark:hover:border-emerald-500 bg-white dark:bg-gray-900 hover:bg-emerald-50/40 dark:hover:bg-emerald-950/20 text-left transition flex items-start gap-3 group disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-gray-200 dark:disabled:hover:border-gray-800 disabled:hover:bg-transparent"
+            >
+              <div class="p-2 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 rounded-xl group-hover:scale-105 transition shrink-0">
+                <FileText class="w-4 h-4" />
+              </div>
+              <div class="flex-1">
+                <div class="font-semibold text-xs text-gray-900 dark:text-gray-100 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 flex items-center justify-between">
+                  <span>📋 提取元数据并填入参数</span>
+                  <span v-if="droppedImageInfo.metadata.hasMetadata" class="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">一键填入</span>
+                  <span v-else class="text-[10px] text-gray-400 font-normal">无元数据</span>
+                </div>
+                <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">读取图中的 Prompt、UC、步数、CFG、尺寸、采样器并填入表单</p>
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 页面拖拽悬浮提示遮罩 -->
+    <div 
+      v-if="isDraggingOver" 
+      class="fixed inset-0 z-[100] bg-blue-600/20 dark:bg-blue-500/20 backdrop-blur-sm border-4 border-dashed border-blue-500 flex flex-col items-center justify-center gap-3 text-blue-600 dark:text-blue-400 pointer-events-none animate-fade-in"
+    >
+      <div class="p-5 bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex items-center gap-3 border border-blue-200 dark:border-blue-800">
+        <UploadCloud class="w-8 h-8 animate-bounce" />
+        <span class="text-base font-bold text-gray-900 dark:text-gray-100">松开以导入图片...</span>
       </div>
     </div>
   </template>
