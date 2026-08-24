@@ -72,6 +72,9 @@ export const generateImageStream = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error in streaming generation:', error.message);
     if (error.response) {
+      if (typeof error.response.data?.on === 'function') {
+        return res.status(error.response.status).json({ error: 'Upstream generation error', status: error.response.status });
+      }
       return res.status(error.response.status).json(error.response.data);
     }
     return res.status(500).json({ error: 'Internal Server Error' });

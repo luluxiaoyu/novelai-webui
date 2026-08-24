@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, reactive } from 'vue';
-import axios from 'axios';
+import { encryptedAxios, encryptedFetchStream } from '../utils/api';
 import JSZip from 'jszip';
 import { useAuthStore } from './auth';
 
@@ -136,12 +136,7 @@ export const useGenerationStore = defineStore('generation', () => {
         headers['x-access-key'] = authStore.siteAccessKey;
       }
 
-      const api = axios.create({
-        baseURL: '/api',
-        headers,
-        responseType: 'arraybuffer'
-      });
-      
+
       const seedToUse = params.seed === -1 ? Math.floor(Math.random() * 4294967295) : params.seed;
       const isV4OrV5 = params.model.includes('-4') || params.model.includes('-5');
       let action: 'generate' | 'img2img' | 'infill' = 'generate';
@@ -242,7 +237,7 @@ export const useGenerationStore = defineStore('generation', () => {
             fetchHeaders['x-access-key'] = authStore.siteAccessKey;
           }
 
-          const response = await fetch('/api/generate-image-stream', {
+          const response = await encryptedFetchStream('/api/generate-image-stream', {
             method: 'POST',
             headers: fetchHeaders,
             body: JSON.stringify(payload),
@@ -311,7 +306,7 @@ export const useGenerationStore = defineStore('generation', () => {
                             url: finalUrl,
                             params: JSON.parse(JSON.stringify({...params, seed: seedToUse})),
                             timestamp: Date.now(),
-isNew: true
+                            isNew: batchTotal.value > 1
                           };
                           currentImage.value = generated;
                           history.value.unshift(generated);
@@ -338,7 +333,7 @@ isNew: true
               url: streamPreviewUrl.value,
               params: JSON.parse(JSON.stringify({...params, seed: seedToUse})),
               timestamp: Date.now(),
-isNew: true
+              isNew: batchTotal.value > 1
             };
             currentImage.value = generated;
             history.value.unshift(generated);
@@ -349,7 +344,13 @@ isNew: true
         }
       } else {
         // 常规生图 (Zip 解压转 Base64 确保持久化刷新不丢失)
-        const res = await api.post('/generate-image', payload);
+        const res = await encryptedAxios({
+          method: 'POST',
+          url: '/api/generate-image',
+          data: payload,
+          headers,
+          responseType: 'arraybuffer'
+        });
         
         const zip = new JSZip();
         const loadedZip = await zip.loadAsync(res.data);
@@ -365,7 +366,7 @@ isNew: true
             url: dataUrl,
             params: JSON.parse(JSON.stringify({...params, seed: seedToUse})),
             timestamp: Date.now(),
-isNew: true
+            isNew: batchTotal.value > 1
           };
           
           currentImage.value = generated;

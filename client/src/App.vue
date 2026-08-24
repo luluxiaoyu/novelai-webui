@@ -4,8 +4,9 @@ import { useGenerationStore } from './stores/generation';
 import { saveAs } from 'file-saver';
 import { computed, ref, onMounted } from 'vue';
 import { useDark, useToggle } from '@vueuse/core';
+import JSZip from 'jszip';
 import CustomSelect from './components/CustomSelect.vue';
-import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, Sparkles, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Star, Check, Lock, Search, Folder, FolderHeart } from 'lucide-vue-next';
+import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, Sparkles, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud } from 'lucide-vue-next';
 
 const authStore = useAuthStore();
 const genStore = useGenerationStore();
@@ -23,6 +24,124 @@ const promptGroupFilter = ref('all');
 const promptSearchQuery = ref('');
 const paramsCopied = ref(false);
 const imageCopied = ref(false);
+
+const showDataModal = ref(false);
+const exportIncludeImages = ref(false);
+const importMode = ref<'merge' | 'overwrite'>('merge');
+const fileInputRef = ref<HTMLInputElement | null>(null);
+
+const isExporting = ref(false);
+const isImporting = ref(false);
+
+const handleExportData = async () => {
+  try {
+    isExporting.value = true;
+    const zip = new JSZip();
+    const metadata: any = {
+      params: genStore.params,
+      promptHistory: genStore.promptHistory,
+      history: []
+    };
+
+    if (exportIncludeImages.value && genStore.history.length > 0) {
+      const imagesFolder = zip.folder("images");
+      if (imagesFolder) {
+        for (const item of genStore.history) {
+          const dateStr = new Date(item.timestamp).toISOString().split('T')[0];
+          const dateFolder = imagesFolder.folder(dateStr);
+          if (dateFolder) {
+            // url is in format: data:image/png;base64,xxxxxx...
+            const base64Data = item.url.replace(/^data:image\/\w+;base64,/, "");
+            const filename = `${item.id}.png`;
+            dateFolder.file(filename, base64Data, { base64: true });
+            
+            // Create a metadata copy without the heavy base64 url
+            const itemMeta = { ...item, url: undefined, filePath: `images/${dateStr}/${filename}` };
+            metadata.history.push(itemMeta);
+          }
+        }
+      }
+    }
+
+    zip.file("metadata.json", JSON.stringify(metadata, null, 2));
+    
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `novelai_backup_${new Date().toISOString().split('T')[0]}.zip`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error('Export failed', err);
+    alert('导出失败: ' + err);
+  } finally {
+    isExporting.value = false;
+  }
+};
+
+const handleImportData = async (e: Event) => {
+  const file = (e.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+  
+  try {
+    isImporting.value = true;
+    const zip = await JSZip.loadAsync(file);
+    const metaFile = zip.file('metadata.json');
+    if (!metaFile) {
+      throw new Error("压缩包内找不到 metadata.json 文件");
+    }
+    
+    const parsed = JSON.parse(await metaFile.async('string'));
+    let restoredHistory: any[] = [];
+    
+    if (parsed.history && parsed.history.length > 0) {
+      restoredHistory = await Promise.all(parsed.history.map(async (item: any) => {
+        if (item.filePath) {
+          const imgFile = zip.file(item.filePath);
+          if (imgFile) {
+            const base64 = await imgFile.async('base64');
+            item.url = `data:image/png;base64,${base64}`;
+          }
+        }
+        return item;
+      }));
+    }
+
+    if (importMode.value === 'overwrite') {
+      if (parsed.params) Object.assign(genStore.params, parsed.params);
+      if (parsed.promptHistory) genStore.promptHistory = parsed.promptHistory;
+      if (restoredHistory.length > 0) {
+        genStore.history = restoredHistory;
+        genStore.currentImage = restoredHistory[0];
+      }
+    } else {
+      // Merge
+      if (parsed.params) Object.assign(genStore.params, parsed.params);
+      if (parsed.promptHistory) {
+        const existingIds = new Set(genStore.promptHistory.map(p => p.id));
+        const newPrompts = parsed.promptHistory.filter((p: any) => !existingIds.has(p.id));
+        genStore.promptHistory = [...newPrompts, ...genStore.promptHistory];
+      }
+      if (restoredHistory.length > 0) {
+        const existingIds = new Set(genStore.history.map(h => h.id));
+        const newHistory = restoredHistory.filter(h => !existingIds.has(h.id));
+        genStore.history = [...newHistory, ...genStore.history];
+        if (!genStore.currentImage && genStore.history.length > 0) {
+          genStore.currentImage = genStore.history[0];
+        }
+      }
+    }
+    showDataModal.value = false;
+    alert('数据导入成功！');
+  } catch (err) {
+    console.error('Import failed', err);
+    alert('导入失败，请确保您选择的是有效的备份ZIP文件。\n错误信息: ' + (err as Error).message);
+  } finally {
+    isImporting.value = false;
+    if (fileInputRef.value) fileInputRef.value.value = '';
+  }
+};
 
 const filteredHistory = computed(() => {
   const now = new Date();
@@ -583,6 +702,9 @@ const copyImageToClipboard = async () => {
             <LogOut class="w-4 h-4" />
           </button>
         </template>
+        <button @click="showDataModal = true" class="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white p-1 transition" title="数据管理与备份">
+          <Database class="w-4 h-4" />
+        </button>
         <button @click="toggleDark()" class="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white p-1 transition" title="切换主题">
           <Moon v-if="!isDark" class="w-4 h-4" />
           <Sun v-else class="w-4 h-4" />
@@ -1023,6 +1145,7 @@ const copyImageToClipboard = async () => {
           <div 
             v-for="item in filteredHistory" 
             :key="item.id"
+            @mouseenter="item.isNew = false"
             @click="item.isNew = false; genStore.currentImage = item; resetZoom(); mobileTab = 'canvas'"
             class="group relative w-full h-auto max-h-56 shrink-0 rounded-lg overflow-hidden cursor-pointer border-2 transition-all bg-gray-50 dark:bg-gray-950 flex items-center justify-center"
             :class="genStore.currentImage?.id === item.id ? 'border-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.3)]' : 'border-transparent hover:border-gray-300 dark:hover:border-gray-600'"
@@ -1189,6 +1312,72 @@ const copyImageToClipboard = async () => {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- 数据管理弹窗 -->
+    <div v-if="showDataModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in" @click.self="showDataModal = false">
+      <div class="bg-white dark:bg-gray-900 w-full max-w-md rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-950/50">
+          <h3 class="text-base font-semibold flex items-center gap-2">
+            <Database class="w-5 h-5 text-blue-500" />
+            数据管理与备份
+          </h3>
+          <button @click="showDataModal = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 transition">
+            <X class="w-5 h-5" />
+          </button>
+        </div>
+        
+        <div class="p-5 flex flex-col gap-6">
+          <!-- 导出选项 -->
+          <div class="flex flex-col gap-3">
+            <h4 class="text-sm font-semibold text-gray-800 dark:text-gray-200 border-b border-gray-100 dark:border-gray-800 pb-2">导出数据</h4>
+            <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+              <input type="checkbox" v-model="exportIncludeImages" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+              <span>包含已生成的历史图片数据</span>
+            </label>
+            <p v-if="exportIncludeImages" class="text-xs text-yellow-600 dark:text-yellow-500 bg-yellow-50 dark:bg-yellow-900/20 p-2 rounded-lg">
+              注意：包含图片数据可能会导致备份文件非常庞大（几十MB甚至上百MB）。
+            </p>
+            <button 
+              @click="handleExportData"
+              :disabled="isExporting"
+              class="w-full flex justify-center items-center gap-2 bg-gray-900 hover:bg-gray-800 dark:bg-gray-100 dark:hover:bg-white dark:text-gray-900 text-white px-4 py-2.5 rounded-xl font-medium transition shadow-sm disabled:opacity-50"
+            >
+              <Loader2 v-if="isExporting" class="w-4 h-4 animate-spin" />
+              <DownloadCloud v-else class="w-4 h-4" />
+              {{ isExporting ? '正在打包压缩包...' : '下载备份文件' }}
+            </button>
+          </div>
+
+          <!-- 导入选项 -->
+          <div class="flex flex-col gap-3">
+            <h4 class="text-sm font-semibold text-gray-800 dark:text-gray-200 border-b border-gray-100 dark:border-gray-800 pb-2">导入恢复</h4>
+            <div class="flex gap-4">
+              <label class="flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                <input type="radio" v-model="importMode" value="merge" class="text-blue-600 focus:ring-blue-500" />
+                <span>增量导入 (合并)</span>
+              </label>
+              <label class="flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                <input type="radio" v-model="importMode" value="overwrite" class="text-red-500 focus:ring-red-500" />
+                <span>完全覆盖 (替换)</span>
+              </label>
+            </div>
+            <p v-if="importMode === 'overwrite'" class="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 p-2 rounded-lg">
+              警告：当前的所有历史记录和参数将被导入的文件完全替换！
+            </p>
+            
+            <input type="file" accept=".zip" class="hidden" ref="fileInputRef" @change="handleImportData" />
+            <button 
+              @click="fileInputRef?.click()"
+              :disabled="isImporting"
+              class="w-full flex justify-center items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl font-medium transition shadow-sm disabled:opacity-50"
+            >
+              <Loader2 v-if="isImporting" class="w-4 h-4 animate-spin" />
+              <UploadCloud v-else class="w-4 h-4" />
+              {{ isImporting ? '正在解析导入...' : '选择并导入 ZIP 文件' }}
+            </button>
           </div>
         </div>
       </div>

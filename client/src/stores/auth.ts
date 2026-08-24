@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import axios from 'axios';
+import { encryptedAxios } from '../utils/api';
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string>('');
@@ -24,7 +24,9 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       siteAuthLoading.value = true;
       siteAuthError.value = '';
-      const res = await axios.get('/api/auth/status', {
+      const res = await encryptedAxios({
+        method: 'GET',
+        url: '/api/auth/status',
         headers: siteAccessKey.value ? { 'x-access-key': siteAccessKey.value } : {}
       });
       siteAuthRequired.value = !!res.data.requiresAuth;
@@ -51,7 +53,11 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       siteAuthLoading.value = true;
       siteAuthError.value = '';
-      const res = await axios.post('/api/auth/verify-access', { accessKey: inputKey.trim() });
+      const res = await encryptedAxios({
+        method: 'POST',
+        url: '/api/auth/verify-access',
+        data: { accessKey: inputKey.trim() }
+      });
       if (res.data.success) {
         siteAccessKey.value = inputKey.trim();
         siteUnlocked.value = true;
@@ -81,17 +87,15 @@ export const useAuthStore = defineStore('auth', () => {
       if (siteAccessKey.value) {
         headers['x-access-key'] = siteAccessKey.value;
       }
-
-      const api = axios.create({
-        baseURL: '/api',
-        headers
-      });
       
       let subSuccess = false;
 
-      // 1. 从 /user/subscription 读取订阅等级、点数与 V5 usage
       try {
-        const subRes = await api.get('/user/subscription');
+        const subRes = await encryptedAxios({
+          method: 'GET',
+          url: '/api/user/subscription',
+          headers
+        });
         const data = subRes.data;
         if (data) {
           subSuccess = true;
@@ -100,7 +104,6 @@ export const useAuthStore = defineStore('auth', () => {
           }
           active.value = !!data.active;
 
-          // 计算点数 (Fixed + Purchased training steps)
           if (data.trainingStepsLeft) {
             const fixed = data.trainingStepsLeft.fixedTrainingStepsLeft || 0;
             const purchased = data.trainingStepsLeft.purchasedTrainingSteps || 0;
@@ -121,9 +124,12 @@ export const useAuthStore = defineStore('auth', () => {
         console.warn('读取 /user/subscription 异常:', err.message);
       }
       
-      // 2. 从 /user/data 补充 Anlas 与 V5 动态点数 (如果有直接的 anlas 字段)
       try {
-        const dataRes = await api.get('/user/data');
+        const dataRes = await encryptedAxios({
+          method: 'GET',
+          url: '/api/user/data',
+          headers
+        });
         const d = dataRes.data;
         if (d) {
           subSuccess = true;

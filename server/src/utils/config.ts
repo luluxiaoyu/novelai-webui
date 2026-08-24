@@ -30,3 +30,11 @@ export const getSitePassword = (): string => {
 export const getPort = (): number => {
   return process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 };
+
+export const isEncryptionEnabled = (): boolean => {
+  return process.env.ENABLE_ENCRYPTION === 'true' || process.env.ENABLE_ENCRYPTION === '1';
+};
+
+export const getEncryptionKey = (): string => {
+  return isSiteAuthEnabled() ? `nahida1027${getSitePassword()}` : 'nahida1027';
+};
