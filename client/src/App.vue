@@ -242,6 +242,40 @@ const filteredPromptHistory = computed(() => {
   });
 });
 
+const copiedPromptId = ref<string | null>(null);
+const deletingPromptId = ref<string | null>(null);
+let deletePromptTimer: any = null;
+
+const handleCopyPrompt = async (item: any) => {
+  try {
+    let text = item.prompt;
+    if (item.negative_prompt) {
+      text += `\n### Negative Prompt:\n${item.negative_prompt}`;
+    }
+    await navigator.clipboard.writeText(text);
+    copiedPromptId.value = item.id;
+    setTimeout(() => {
+      if (copiedPromptId.value === item.id) copiedPromptId.value = null;
+    }, 2000);
+  } catch (err) {
+    console.error('Failed to copy prompt:', err);
+  }
+};
+
+const handleDeletePrompt = (id: string) => {
+  if (deletingPromptId.value === id) {
+    genStore.deletePromptHistory(id);
+    deletingPromptId.value = null;
+    clearTimeout(deletePromptTimer);
+  } else {
+    deletingPromptId.value = id;
+    clearTimeout(deletePromptTimer);
+    deletePromptTimer = setTimeout(() => {
+      if (deletingPromptId.value === id) deletingPromptId.value = null;
+    }, 3000);
+  }
+};
+
 const isV3 = computed(() => {
   return genStore.params.model.includes('-3') || genStore.params.model.includes('safe-diffusion');
 });
@@ -1654,34 +1688,34 @@ watch(
     </main>
 
     <!-- 历史提示词弹窗 -->
-    <div v-if="showPromptHistory" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
-      <div class="bg-white dark:bg-gray-900 w-full max-w-5xl rounded-2xl shadow-2xl flex max-h-[85vh] h-[85vh] overflow-hidden">
+    <div v-if="showPromptHistory" class="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
+      <div class="bg-white dark:bg-gray-900 w-full max-w-5xl rounded-2xl shadow-2xl flex flex-col md:flex-row max-h-[92vh] md:max-h-[85vh] h-[92vh] md:h-[85vh] overflow-hidden border border-gray-200 dark:border-gray-800">
         
-        <!-- 左侧过滤器和搜索 -->
-        <div class="w-64 bg-gray-50 dark:bg-gray-950/50 border-r border-gray-200 dark:border-gray-800 flex flex-col overflow-y-auto custom-scrollbar">
-          <div class="p-4 border-b border-gray-200 dark:border-gray-800">
-            <h3 class="text-base font-semibold flex items-center gap-2 mb-4">
-              <History class="w-5 h-5 text-blue-500" />
+        <!-- PC端左侧过滤器和搜索 (md:flex) -->
+        <div class="hidden md:flex w-60 bg-gray-50 dark:bg-gray-950/50 border-r border-gray-200 dark:border-gray-800 flex-col overflow-y-auto custom-scrollbar shrink-0">
+          <div class="p-3.5 border-b border-gray-200 dark:border-gray-800">
+            <h3 class="text-sm font-semibold flex items-center gap-2 mb-3">
+              <History class="w-4 h-4 text-blue-500" />
               提示词库
             </h3>
             
             <div class="relative">
-              <Search class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Search class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
               <input 
                 v-model="promptSearchQuery"
                 type="text" 
                 placeholder="搜索提示词或备注..."
-                class="w-full pl-9 pr-3 py-2 text-xs bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                class="w-full pl-8 pr-3 py-1.5 text-xs bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
               />
             </div>
           </div>
 
-          <div class="p-3 flex flex-col gap-1">
-            <div class="text-xs font-bold text-gray-400 dark:text-gray-500 px-3 py-2 uppercase tracking-wider">时间筛选</div>
+          <div class="p-2.5 flex flex-col gap-0.5">
+            <div class="text-[11px] font-bold text-gray-400 dark:text-gray-500 px-2.5 py-1.5 uppercase tracking-wider">时间筛选</div>
             <button 
               v-for="opt in promptDateFilterOptions" :key="opt.value"
               @click="promptDateFilter = opt.value"
-              class="text-left px-3 py-2 text-xs rounded-lg transition-colors flex items-center justify-between group"
+              class="text-left px-2.5 py-1.5 text-xs rounded-lg transition-colors flex items-center justify-between group"
               :class="promptDateFilter === opt.value ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 font-semibold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800'"
             >
               <span>{{ opt.label }}</span>
@@ -1689,37 +1723,110 @@ watch(
             </button>
           </div>
 
-          <div class="p-3 flex flex-col gap-1 border-t border-gray-200 dark:border-gray-800 flex-1">
-            <div class="text-xs font-bold text-gray-400 dark:text-gray-500 px-3 py-2 uppercase tracking-wider">分组与收藏</div>
+          <div class="p-2.5 flex flex-col gap-0.5 border-t border-gray-200 dark:border-gray-800 flex-1">
+            <div class="text-[11px] font-bold text-gray-400 dark:text-gray-500 px-2.5 py-1.5 uppercase tracking-wider">分组与收藏</div>
             <button 
               @click="promptGroupFilter = 'all'"
-              class="text-left px-3 py-2 text-xs rounded-lg transition-colors flex items-center gap-2"
+              class="text-left px-2.5 py-1.5 text-xs rounded-lg transition-colors flex items-center gap-2"
               :class="promptGroupFilter === 'all' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 font-semibold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800'"
             >
-              <FolderOpen class="w-4 h-4 opacity-70" /> 全部
+              <FolderOpen class="w-3.5 h-3.5 opacity-70" /> 全部
             </button>
             <button 
               @click="promptGroupFilter = 'favorites'"
-              class="text-left px-3 py-2 text-xs rounded-lg transition-colors flex items-center gap-2"
+              class="text-left px-2.5 py-1.5 text-xs rounded-lg transition-colors flex items-center gap-2"
               :class="promptGroupFilter === 'favorites' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 font-semibold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800'"
             >
-              <FolderHeart class="w-4 h-4 opacity-70" /> 我的收藏
+              <FolderHeart class="w-3.5 h-3.5 opacity-70" /> 我的收藏
             </button>
             
             <button 
               v-for="group in customPromptGroups" :key="group"
               @click="promptGroupFilter = group"
-              class="text-left px-3 py-2 text-xs rounded-lg transition-colors flex items-center gap-2"
+              class="text-left px-2.5 py-1.5 text-xs rounded-lg transition-colors flex items-center gap-2"
               :class="promptGroupFilter === group ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 font-semibold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800'"
             >
-              <Folder class="w-4 h-4 opacity-70" /> {{ group }}
+              <Folder class="w-3.5 h-3.5 opacity-70" /> {{ group }}
             </button>
           </div>
         </div>
 
-        <!-- 右侧内容区 -->
+        <!-- 移动端顶部标题、搜索与快捷横向筛选胶囊栏 (md:hidden) -->
+        <div class="md:hidden flex flex-col border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950/60 shrink-0">
+          <div class="px-3.5 py-2.5 flex items-center justify-between border-b border-gray-200/60 dark:border-gray-800/60">
+            <h3 class="text-sm font-bold flex items-center gap-1.5">
+              <History class="w-4 h-4 text-blue-500" />
+              提示词库 ({{ filteredPromptHistory.length }})
+            </h3>
+            <button @click="showPromptHistory = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800">
+              <X class="w-5 h-5" />
+            </button>
+          </div>
+
+          <!-- 搜索输入框 -->
+          <div class="p-2.5 pb-1.5">
+            <div class="relative">
+              <Search class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input 
+                v-model="promptSearchQuery"
+                type="text" 
+                placeholder="搜索提示词、备注或负面..."
+                class="w-full pl-8 pr-7 py-1.5 text-xs bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+              />
+              <button 
+                v-if="promptSearchQuery" 
+                @click="promptSearchQuery = ''"
+                class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5"
+              >
+                <X class="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+
+          <!-- 快捷横向滑动筛选栏 -->
+          <div class="flex items-center gap-1.5 overflow-x-auto px-2.5 pb-2.5 pt-0.5 custom-scrollbar select-none">
+            <button 
+              @click="promptGroupFilter = 'all'; promptDateFilter = 'all'"
+              class="px-2.5 py-1 text-[11px] rounded-full whitespace-nowrap font-medium transition flex items-center gap-1 shrink-0"
+              :class="promptGroupFilter === 'all' && promptDateFilter === 'all' ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-200/80 dark:bg-gray-800 text-gray-700 dark:text-gray-300'"
+            >
+              全部
+            </button>
+            <button 
+              @click="promptGroupFilter = 'favorites'"
+              class="px-2.5 py-1 text-[11px] rounded-full whitespace-nowrap font-medium transition flex items-center gap-1 shrink-0"
+              :class="promptGroupFilter === 'favorites' ? 'bg-yellow-500 text-white shadow-sm' : 'bg-gray-200/80 dark:bg-gray-800 text-gray-700 dark:text-gray-300'"
+            >
+              ⭐ 我的收藏
+            </button>
+            <button 
+              @click="promptDateFilter = promptDateFilter === 'today' ? 'all' : 'today'"
+              class="px-2.5 py-1 text-[11px] rounded-full whitespace-nowrap font-medium transition flex items-center gap-1 shrink-0"
+              :class="promptDateFilter === 'today' ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-200/80 dark:bg-gray-800 text-gray-700 dark:text-gray-300'"
+            >
+              📅 今天
+            </button>
+            <button 
+              @click="promptDateFilter = promptDateFilter === 'week' ? 'all' : 'week'"
+              class="px-2.5 py-1 text-[11px] rounded-full whitespace-nowrap font-medium transition flex items-center gap-1 shrink-0"
+              :class="promptDateFilter === 'week' ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-200/80 dark:bg-gray-800 text-gray-700 dark:text-gray-300'"
+            >
+              📅 近7天
+            </button>
+            <button 
+              v-for="group in customPromptGroups" :key="group"
+              @click="promptGroupFilter = promptGroupFilter === group ? 'all' : group"
+              class="px-2.5 py-1 text-[11px] rounded-full whitespace-nowrap font-medium transition flex items-center gap-1 shrink-0"
+              :class="promptGroupFilter === group ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-200/80 dark:bg-gray-800 text-gray-700 dark:text-gray-300'"
+            >
+              📁 {{ group }}
+            </button>
+          </div>
+        </div>
+
+        <!-- 内容列表区 -->
         <div class="flex-1 flex flex-col overflow-hidden bg-white dark:bg-gray-900">
-          <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center">
+          <div class="hidden md:flex px-5 py-3.5 border-b border-gray-200 dark:border-gray-800 justify-between items-center">
             <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300">
               共找到 <span class="font-bold text-gray-900 dark:text-white">{{ filteredPromptHistory.length }}</span> 条记录
             </h3>
@@ -1728,24 +1835,27 @@ watch(
             </button>
           </div>
           
-          <div class="flex-1 overflow-auto p-4 custom-scrollbar">
-            <div v-if="filteredPromptHistory.length === 0" class="text-center py-20 text-gray-400 dark:text-gray-600 text-sm flex flex-col items-center">
-              <Search class="w-12 h-12 opacity-20 mb-3" />
+          <div class="flex-1 overflow-y-auto p-3 sm:p-4 custom-scrollbar">
+            <div v-if="filteredPromptHistory.length === 0" class="text-center py-16 sm:py-20 text-gray-400 dark:text-gray-600 text-sm flex flex-col items-center">
+              <Search class="w-10 h-10 opacity-20 mb-3" />
               未找到匹配的提示词
             </div>
             <div v-else class="flex flex-col gap-3">
-              <div v-for="item in filteredPromptHistory" :key="item.id" class="p-4 bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700 rounded-xl hover:shadow-md hover:border-blue-300 dark:hover:border-blue-700 transition group relative flex flex-col gap-2">
-                
+              <div 
+                v-for="item in filteredPromptHistory" 
+                :key="item.id" 
+                class="p-3 sm:p-4 bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700 rounded-xl hover:shadow-md hover:border-blue-300 dark:hover:border-blue-700 transition group flex flex-col gap-2 relative"
+              >
                 <!-- 顶部：收藏与分组与备注 -->
-                <div class="flex items-center gap-2 border-b border-gray-200/60 dark:border-gray-700/60 pb-2 mb-1">
-                  <button @click="genStore.toggleFavoritePrompt(item.id)" title="收藏/取消收藏" class="shrink-0">
+                <div class="flex items-center gap-2 border-b border-gray-200/60 dark:border-gray-700/60 pb-2">
+                  <button @click="genStore.toggleFavoritePrompt(item.id)" title="收藏/取消收藏" class="p-1 -m-1 shrink-0">
                     <Star :class="['w-4 h-4 transition-colors', item.isFavorite ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300 hover:text-yellow-400 dark:text-gray-600']" />
                   </button>
                   <input
                     type="text"
                     :value="item.group || ''"
                     @change="genStore.updatePromptGroup(item.id, ($event.target as HTMLInputElement).value)"
-                    class="w-16 shrink-0 text-[11px] px-1.5 py-0.5 rounded bg-gray-200/50 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300 outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+                    class="w-16 shrink-0 text-[11px] px-1.5 py-0.5 rounded bg-gray-200/60 dark:bg-gray-700/60 text-gray-700 dark:text-gray-300 outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
                     placeholder="分组..."
                     title="输入并回车以设置自定义分组"
                   />
@@ -1758,24 +1868,46 @@ watch(
                   />
                 </div>
 
-                <div class="pr-2 pb-8">
-                  <p class="text-sm text-gray-800 dark:text-gray-200 mb-1.5 font-medium leading-relaxed break-all">{{ item.prompt }}</p>
-                  <p v-if="item.negative_prompt" class="text-xs text-red-500/80 dark:text-red-400/80 leading-relaxed line-clamp-1" :title="item.negative_prompt"><span class="font-semibold text-red-600/80 dark:text-red-400/80">Negative:</span> {{ item.negative_prompt }}</p>
+                <!-- 提示词与负面提示词主体 -->
+                <div class="py-0.5">
+                  <p class="text-xs sm:text-sm text-gray-800 dark:text-gray-200 mb-1.5 font-medium leading-relaxed break-all select-text">{{ item.prompt }}</p>
+                  <p v-if="item.negative_prompt" class="text-[11px] sm:text-xs text-red-500/80 dark:text-red-400/80 leading-relaxed break-all select-text" :title="item.negative_prompt">
+                    <span class="font-semibold text-red-600/90 dark:text-red-400/90">Negative:</span> {{ item.negative_prompt }}
+                  </p>
                 </div>
                 
-                <div class="absolute bottom-3 right-4 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button 
-                    @click="genStore.deletePromptHistory(item.id)" 
-                    class="text-red-500 text-xs px-2.5 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 transition flex items-center gap-1"
-                  >
-                    <Trash2 class="w-3.5 h-3.5" />
-                  </button>
-                  <button 
-                    @click="genStore.usePrompt(item); showPromptHistory = false" 
-                    class="bg-blue-600 text-white text-xs px-3 py-1.5 rounded-lg shadow-sm hover:bg-blue-700 transition font-medium"
-                  >
-                    应用
-                  </button>
+                <!-- 底部操作按钮栏 (移动端常驻展示，PC端hover展现) -->
+                <div class="flex items-center justify-between pt-1 border-t border-gray-100 dark:border-gray-800/60">
+                  <span class="text-[10px] text-gray-400 font-mono">{{ new Date(item.timestamp).toLocaleDateString() }}</span>
+
+                  <div class="flex items-center gap-1.5">
+                    <button 
+                      @click="handleCopyPrompt(item)" 
+                      class="text-xs px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition flex items-center gap-1"
+                      :title="copiedPromptId === item.id ? '已复制到剪贴板' : '复制提示词'"
+                    >
+                      <Check v-if="copiedPromptId === item.id" class="w-3.5 h-3.5 text-green-500" />
+                      <Copy v-else class="w-3.5 h-3.5" />
+                      <span>{{ copiedPromptId === item.id ? '已复制' : '复制' }}</span>
+                    </button>
+
+                    <button 
+                      @click="handleDeletePrompt(item.id)" 
+                      class="text-xs px-2 py-1 rounded-lg transition flex items-center gap-1"
+                      :class="deletingPromptId === item.id ? 'bg-red-600 text-white font-bold animate-pulse' : 'text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30'"
+                      :title="deletingPromptId === item.id ? '再次点击确认删除' : '删除'"
+                    >
+                      <Trash2 v-if="deletingPromptId !== item.id" class="w-3.5 h-3.5" />
+                      <span>{{ deletingPromptId === item.id ? '确认删除?' : '' }}</span>
+                    </button>
+
+                    <button 
+                      @click="genStore.usePrompt(item); showPromptHistory = false" 
+                      class="bg-blue-600 text-white text-xs px-3 py-1 rounded-lg shadow-sm hover:bg-blue-700 transition font-medium flex items-center gap-1"
+                    >
+                      应用
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
