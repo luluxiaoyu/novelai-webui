@@ -19,6 +19,8 @@ export const useAuthStore = defineStore('auth', () => {
   const siteAuthLoading = ref<boolean>(false);
   const siteAuthError = ref<string>('');
   const siteAuthChecked = ref<boolean>(false);
+  const hasBuiltinKey = ref<boolean>(false);
+  const allowPaid = ref<boolean>(true);
 
   const checkSiteAuthStatus = async () => {
     try {
@@ -31,6 +33,10 @@ export const useAuthStore = defineStore('auth', () => {
       });
       if (typeof res.data === 'object' && res.data !== null && 'requiresAuth' in res.data) {
         siteAuthRequired.value = !!res.data.requiresAuth;
+        hasBuiltinKey.value = !!res.data.hasBuiltinKey;
+        if (res.data.allowPaid !== undefined) {
+          allowPaid.value = !!res.data.allowPaid;
+        }
         if (!siteAuthRequired.value) {
           siteUnlocked.value = true;
         } else {
@@ -71,6 +77,10 @@ export const useAuthStore = defineStore('auth', () => {
         siteAccessKey.value = trimmed;
         siteUnlocked.value = true;
         siteAuthError.value = '';
+        hasBuiltinKey.value = !!res.data.hasBuiltinKey;
+        if (res.data.allowPaid !== undefined) {
+          allowPaid.value = !!res.data.allowPaid;
+        }
         return true;
       }
       siteAuthError.value = res.data?.message || '访问密钥错误';
@@ -108,74 +118,56 @@ export const useAuthStore = defineStore('auth', () => {
         const data = subRes.data;
         if (data) {
           subSuccess = true;
-          if (typeof data.tier === 'number') {
-            subscriptionTier.value = data.tier;
-          }
-          active.value = !!data.active;
-
-          if (data.trainingStepsLeft) {
-            const fixed = data.trainingStepsLeft.fixedTrainingStepsLeft || 0;
-            const purchased = data.trainingStepsLeft.purchasedTrainingSteps || 0;
-            trainingSteps.value = fixed + purchased;
-            anlas.value = fixed + purchased;
-          }
-
-          // V5 额度 (Stamina / usage percent)
-          if (data.usage && typeof data.usage.percent === 'number') {
+          // Opus 用户的 tier 值为 3
+          subscriptionTier.value = data.tier ?? 0;
+          active.value = data.active ?? false;
+          // 准确提取 V5 免费动态额度
+          if (data.usage?.percent !== undefined) {
             v5UsagePercent.value = data.usage.percent;
+          }
+          if (data.trainingStepsLeft?.purchased !== undefined) {
+            trainingSteps.value = data.trainingStepsLeft.purchased;
           }
         }
       } catch (err: any) {
-        if (err.response?.status === 401 || err.status === 401) {
-          error.value = 'API Token 无效或已过期，请检查后重试。';
-          return false;
-        }
-        console.warn('读取 /user/subscription 异常:', err.message);
+        console.warn('Subscription fetch failed, trying fallback to /user/data:', err.message);
       }
-      
+
+      // 无论订阅接口是否成功，都尝试请求 /user/data 接口获取精准 anlas 点数与兜底订阅信息
       try {
         const dataRes = await encryptedAxios({
           method: 'GET',
           url: '/api/user/data',
           headers
         });
-        const d = dataRes.data;
-        if (d) {
-          subSuccess = true;
-          if (d.subscription) {
-            if (typeof d.subscription.anlas === 'number') {
-              anlas.value = d.subscription.anlas;
+        const uData = dataRes.data;
+        if (uData) {
+          if (uData.subscription) {
+            if (!subSuccess) {
+              subscriptionTier.value = uData.subscription.tier ?? 0;
+              active.value = uData.subscription.active ?? false;
             }
-            if (d.subscription.trainingStepsLeft) {
-              const fixed = d.subscription.trainingStepsLeft.fixedTrainingStepsLeft || 0;
-              const purchased = d.subscription.trainingStepsLeft.purchasedTrainingSteps || 0;
-              trainingSteps.value = fixed + purchased;
-              if (!anlas.value) anlas.value = fixed + purchased;
-            }
-            if (d.subscription.usage && typeof d.subscription.usage.percent === 'number') {
-              v5UsagePercent.value = d.subscription.usage.percent;
+            if (uData.subscription.usage?.percent !== undefined) {
+              v5UsagePercent.value = uData.subscription.usage.percent;
             }
           }
+          if (uData.anlas !== undefined) {
+            anlas.value = uData.anlas;
+          }
+          return true;
         }
       } catch (err: any) {
-        if (err.response?.status === 401 || err.status === 401) {
-          error.value = 'API Token 无效或已过期，请检查后重试。';
-          return false;
-        }
-        console.warn('读取 /user/data 异常:', err.message);
+        console.warn('User data fetch failed:', err.message);
+        if (subSuccess) return true;
       }
 
-      // 如果是登录时测试 Token，但接口均未成功响应，则拒绝放行
-      if (tokenToTest && !subSuccess) {
-        error.value = error.value || '无法验证该 API Token，请确认其是否有效。';
-        return false;
-      }
-
-      return true;
+      if (subSuccess) return true;
+      throw new Error('无法连接到 NovelAI 账户');
     } catch (e: any) {
       console.error('Fetch user data failed:', e);
-      if (e.response?.status === 401 || e.status === 401) {
-        error.value = 'API Token 无效或已过期，请检查后重试。';
+      if (e.response && e.response.status === 401) {
+        token.value = '';
+        error.value = 'API Token 无效或已过期';
         return false;
       }
       if (tokenToTest) {
@@ -199,6 +191,10 @@ export const useAuthStore = defineStore('auth', () => {
       return false;
     }
   };
+
+  const loginWithBuiltin = async () => {
+    return login('__BUILTIN__');
+  };
   
   const logout = () => {
     token.value = '';
@@ -210,13 +206,21 @@ export const useAuthStore = defineStore('auth', () => {
     error.value = '';
   };
 
+  const lockSite = () => {
+    logout();
+    siteAccessKey.value = '';
+    siteUnlocked.value = false;
+    siteAuthError.value = '';
+  };
+
   return { 
     token, anlas, subscriptionTier, active, v5UsagePercent, trainingSteps, loading, error, 
     siteAuthRequired, siteUnlocked, siteAccessKey, siteAuthLoading, siteAuthError, siteAuthChecked,
-    checkSiteAuthStatus, verifySiteAccess, login, logout, fetchUserData 
+    hasBuiltinKey, allowPaid,
+    checkSiteAuthStatus, verifySiteAccess, login, loginWithBuiltin, logout, lockSite, fetchUserData 
   };
 }, {
   persist: {
-    pick: ['token', 'siteAccessKey']
+    pick: ['token', 'siteAccessKey', 'allowPaid']
   }
 });

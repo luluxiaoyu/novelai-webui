@@ -1,9 +1,10 @@
 import { Request, Response } from 'express';
 import axios from 'axios';
+import { resolveNovelAIToken } from '../utils/token';
 
 export const getUserSubscription = async (req: Request, res: Response) => {
-  const token = req.headers.authorization;
-  if (!token) return res.status(401).json({ error: 'Missing authorization header' });
+  const token = resolveNovelAIToken(req);
+  if (!token) return res.status(401).json({ error: 'Missing authorization header or invalid token' });
 
   try {
     const r = await axios.get('https://image.novelai.net/user/subscription', {
@@ -19,8 +20,8 @@ export const getUserSubscription = async (req: Request, res: Response) => {
 };
 
 export const getUserData = async (req: Request, res: Response) => {
-  const token = req.headers.authorization;
-  if (!token) return res.status(401).json({ error: 'Missing authorization header' });
+  const token = resolveNovelAIToken(req);
+  if (!token) return res.status(401).json({ error: 'Missing authorization header or invalid token' });
 
   try {
     const r = await axios.get('https://image.novelai.net/user/data', {
@@ -36,8 +37,8 @@ export const getUserData = async (req: Request, res: Response) => {
 };
 
 export const getUserInformation = async (req: Request, res: Response) => {
-  const token = req.headers.authorization;
-  if (!token) return res.status(401).json({ error: 'Missing authorization header' });
+  const token = resolveNovelAIToken(req);
+  if (!token) return res.status(401).json({ error: 'Missing authorization header or invalid token' });
 
   try {
     const r = await axios.get('https://image.novelai.net/user/information', {

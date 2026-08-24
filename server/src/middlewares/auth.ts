@@ -1,8 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
-import { isSiteAuthEnabled, getSitePassword } from '../utils/config';
+import { isSiteAuthEnabled, findAccessKeyConfig } from '../utils/config';
 
 export const siteAuthMiddleware = (req: Request, res: Response, next: NextFunction) => {
   if (!isSiteAuthEnabled()) {
+    (req as any).siteAuth = { key: 'default', allowPaid: true };
     return next();
   }
 
@@ -12,14 +13,15 @@ export const siteAuthMiddleware = (req: Request, res: Response, next: NextFuncti
     ''
   ).trim();
 
-  const correctPassword = getSitePassword();
+  const keyConfig = findAccessKeyConfig(clientKey);
 
-  if (!clientKey || clientKey !== correctPassword) {
+  if (!clientKey || !keyConfig) {
     return res.status(401).json({
       error: 'Unauthorized: Invalid or missing site access key',
       requiresAuth: true
     });
   }
 
+  (req as any).siteAuth = keyConfig;
   next();
 };

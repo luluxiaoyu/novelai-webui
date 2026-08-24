@@ -216,9 +216,12 @@ server {
 | 变量名 | 默认值 | 说明 |
 |---|---|---|
 | `PORT` | `3000` | 后端服务监听端口 |
+| `NOVELAI_TOKEN` | - | 服务端内置 NovelAI API Token（前端免输入一键登录，后端安全注入） |
 | `ENABLE_SITE_AUTH` | `true` | 是否启用全站访问密码保护 |
-| `ACCESS_PASSWORD` | - | 站点访问密码（用户进入网站后需填入方可使用） |
+| `ACCESS_KEYS` | - | 多访问密钥与权限配置（格式：`admin:all,guest:free`，`free` 严格限制仅限免费参数生图） |
+| `ACCESS_PASSWORD` | - | 站点访问密码（单密钥兼容写法，默认全权限） |
 | `ENABLE_ENCRYPTION` | `false` | 是否开启前后端通信双向混淆加密 |
+| `VITE_ENABLE_ENCRYPTION` | `false` | 客户端加解密开关（需与服务端保持一致） |
 
 ---
 

@@ -1,10 +1,16 @@
 import { Request, Response } from 'express';
 import { forwardRequest, naiImageClient } from '../utils/proxy';
+import { resolveNovelAIToken, validateFreeTierParameters } from '../utils/token';
 import axios from 'axios';
 
 export const generateImage = async (req: Request, res: Response) => {
-  const token = req.headers.authorization;
-  if (!token) return res.status(401).json({ error: 'Missing authorization header' });
+  const token = resolveNovelAIToken(req);
+  if (!token) return res.status(401).json({ error: 'Missing authorization header or invalid token' });
+
+  const freeTierCheck = validateFreeTierParameters(req);
+  if (!freeTierCheck.allowed) {
+    return res.status(403).json({ error: freeTierCheck.reason });
+  }
 
   try {
     const isZip = req.headers.accept === 'application/zip';
@@ -51,8 +57,13 @@ export const generateImage = async (req: Request, res: Response) => {
 };
 
 export const generateImageStream = async (req: Request, res: Response) => {
-  const token = req.headers.authorization;
-  if (!token) return res.status(401).json({ error: 'Missing authorization header' });
+  const token = resolveNovelAIToken(req);
+  if (!token) return res.status(401).json({ error: 'Missing authorization header or invalid token' });
+
+  const freeTierCheck = validateFreeTierParameters(req);
+  if (!freeTierCheck.allowed) {
+    return res.status(403).json({ error: freeTierCheck.reason });
+  }
 
   try {
     const response = await naiImageClient.post('/ai/generate-image-stream', req.body, {

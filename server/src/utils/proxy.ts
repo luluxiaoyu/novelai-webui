@@ -8,10 +8,12 @@ export const naiImageClient = axios.create({
   baseURL: 'https://image.novelai.net',
 });
 
+import { resolveNovelAIToken } from './token';
+
 export const forwardRequest = async (client: any, req: any, res: any, path: string) => {
-  const token = req.headers.authorization;
+  const token = resolveNovelAIToken(req);
   if (!token) {
-    return res.status(401).json({ error: 'Missing authorization header' });
+    return res.status(401).json({ error: 'Missing authorization header or invalid token' });
   }
 
   try {

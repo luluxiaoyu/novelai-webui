@@ -7,24 +7,74 @@ dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
-export const isSiteAuthEnabled = (): boolean => {
-  const enabled = process.env.ENABLE_SITE_AUTH;
-  const password = getSitePassword();
-  
-  if (enabled === 'false' || enabled === '0') return false;
-  if (enabled === 'true' || enabled === '1') return true;
-  
-  // Default: if ACCESS_PASSWORD is provided and non-empty, enable auth automatically
-  return Boolean(password);
-};
+export interface AccessKeyConfig {
+  key: string;
+  allowPaid: boolean;
+}
 
-export const getSitePassword = (): string => {
-  return (
+export const getAccessKeyConfigs = (): AccessKeyConfig[] => {
+  const keysEnv = (process.env.ACCESS_KEYS || '').trim();
+  const configs: AccessKeyConfig[] = [];
+
+  if (keysEnv) {
+    // 格式: key1:all,key2:free,key3:all
+    const entries = keysEnv.split(',').map(s => s.trim()).filter(Boolean);
+    for (const entry of entries) {
+      if (entry.includes(':')) {
+        const [key, perm] = entry.split(':').map(s => s.trim());
+        if (key) {
+          configs.push({
+            key,
+            allowPaid: perm.toLowerCase() !== 'free' && perm.toLowerCase() !== 'free_only'
+          });
+        }
+      } else {
+        configs.push({
+          key: entry,
+          allowPaid: true
+        });
+      }
+    }
+  }
+
+  // 兼容旧版单个 ACCESS_PASSWORD
+  const legacyPassword = (
     process.env.ACCESS_PASSWORD ||
     process.env.SITE_PASSWORD ||
     process.env.SITE_KEY ||
     ''
   ).trim();
+
+  if (legacyPassword && !configs.some(c => c.key === legacyPassword)) {
+    configs.push({
+      key: legacyPassword,
+      allowPaid: true
+    });
+  }
+
+  return configs;
+};
+
+export const findAccessKeyConfig = (clientKey: string): AccessKeyConfig | null => {
+  if (!clientKey || !clientKey.trim()) return null;
+  const target = clientKey.trim();
+  const configs = getAccessKeyConfigs();
+  return configs.find(c => c.key === target) || null;
+};
+
+export const isSiteAuthEnabled = (): boolean => {
+  const enabled = process.env.ENABLE_SITE_AUTH;
+  const configs = getAccessKeyConfigs();
+  
+  if (enabled === 'false' || enabled === '0') return false;
+  if (enabled === 'true' || enabled === '1') return true;
+  
+  return configs.length > 0;
+};
+
+export const getSitePassword = (): string => {
+  const configs = getAccessKeyConfigs();
+  return configs.length > 0 ? configs[0].key : '';
 };
 
 export const getPort = (): number => {
@@ -40,4 +90,18 @@ export const getEncryptionKey = (clientAccessKey?: string): string => {
     return `nahida1027${clientAccessKey.trim()}`;
   }
   return 'nahida1027';
+};
+
+export const getBuiltinToken = (): string => {
+  return (
+    process.env.NOVELAI_TOKEN ||
+    process.env.BUILTIN_NOVELAI_KEY ||
+    process.env.BUILTIN_API_KEY ||
+    process.env.NAI_TOKEN ||
+    ''
+  ).trim();
+};
+
+export const hasBuiltinToken = (): boolean => {
+  return Boolean(getBuiltinToken());
 };

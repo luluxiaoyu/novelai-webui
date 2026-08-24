@@ -7,7 +7,7 @@ import { computed, ref, onMounted, watch } from 'vue';
 import { useDark, useToggle } from '@vueuse/core';
 import JSZip from 'jszip';
 import CustomSelect from './components/CustomSelect.vue';
-import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud, Cloud, Wifi } from 'lucide-vue-next';
+import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud, Cloud, Wifi, Sparkles } from 'lucide-vue-next';
 
 const authStore = useAuthStore();
 const genStore = useGenerationStore();
@@ -301,7 +301,8 @@ const costInfo = computed(() => {
     return {
       isFree: false,
       text: '消耗 anlas 点数',
-      reason: '非 Opus 会员生图需扣费'
+      reason: '非 Opus 会员生图需扣费',
+      blockedByPermission: !authStore.allowPaid
     };
   }
 
@@ -312,20 +313,23 @@ const costInfo = computed(() => {
         return {
           isFree: true,
           text: '免费 (消耗 V5 额度)',
-          reason: 'Opus 专属免费生成'
+          reason: 'Opus 专属免费生成',
+          blockedByPermission: false
         };
       } else {
         return {
           isFree: false,
           text: '消耗 anlas (V5 额度已尽)',
-          reason: 'V5 免费额度已耗尽'
+          reason: 'V5 免费额度已耗尽',
+          blockedByPermission: !authStore.allowPaid
         };
       }
     }
     return {
       isFree: true,
       text: 'Opus 免费',
-      reason: '标准尺寸与步数免费'
+      reason: '标准尺寸与步数免费',
+      blockedByPermission: false
     };
   }
 
@@ -336,7 +340,8 @@ const costInfo = computed(() => {
   return {
     isFree: false,
     text: '需消耗 anlas',
-    reason: reasons.join('，')
+    reason: reasons.join('，'),
+    blockedByPermission: !authStore.allowPaid
   };
 });
 
@@ -723,8 +728,16 @@ watch(
       
       <div class="flex flex-wrap gap-2 md:gap-3 items-center">
         <template v-if="authStore.token">
+          <span 
+            v-if="!authStore.allowPaid"
+            class="text-xs bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 px-2.5 py-1.5 rounded-md border border-amber-200 dark:border-amber-850 font-medium whitespace-nowrap flex items-center gap-1"
+            title="该访问密钥已开启权限限制，仅可使用免费参数生图"
+          >
+            <Lock class="w-3 h-3 text-amber-500" />
+            受限密钥 (仅免费额度)
+          </span>
           <span class="text-xs bg-gray-100 dark:bg-gray-800 px-2.5 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 font-medium">
-            {{ authStore.subscriptionTier === 3 ? 'Opus 会员' : (authStore.subscriptionTier === 2 ? 'Scroll 会员' : (authStore.subscriptionTier === 1 ? 'Tablet 会员' : '免费/未定')) }}
+            {{ authStore.token === '__BUILTIN__' ? '内置 API Key' : (authStore.subscriptionTier === 3 ? 'Opus 会员' : (authStore.subscriptionTier === 2 ? 'Scroll 会员' : (authStore.subscriptionTier === 1 ? 'Tablet 会员' : '免费/未定'))) }}
           </span>
           <span class="text-xs bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2.5 py-1.5 rounded-md border border-blue-200 dark:border-blue-800 font-medium whitespace-nowrap">
             anals: {{ authStore.anlas.toLocaleString() }}
@@ -752,8 +765,11 @@ watch(
           <button @click="authStore.fetchUserData()" :disabled="authStore.loading" class="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white p-1 transition" title="刷新额度">
             <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': authStore.loading }" />
           </button>
-          <button @click="authStore.logout(); inputToken = ''" class="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white p-1 transition" title="退出">
+          <button @click="authStore.logout(); inputToken = ''" class="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white p-1 transition" title="退出当前 Token 登录">
             <LogOut class="w-4 h-4" />
+          </button>
+          <button v-if="authStore.siteAuthRequired" @click="authStore.lockSite(); inputToken = ''" class="text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 p-1 transition" title="退出并锁定访问密钥">
+            <Lock class="w-4 h-4" />
           </button>
         </template>
         <button @click="showDataModal = true" class="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white p-1 transition" title="数据管理与备份">
@@ -780,10 +796,28 @@ watch(
         </p>
         
         <div class="space-y-4">
+          <!-- 内置 API Key 快速登录 -->
+          <div v-if="authStore.hasBuiltinKey" class="mb-2">
+            <button 
+              @click="authStore.loginWithBuiltin()" 
+              :disabled="authStore.loading"
+              class="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 disabled:opacity-50 text-white rounded-xl p-4 transition-all font-semibold flex justify-center items-center gap-2 shadow-lg shadow-purple-600/20 active:scale-[0.99] text-sm"
+            >
+              <Loader2 v-if="authStore.loading && authStore.token === '__BUILTIN__'" class="w-4 h-4 animate-spin" />
+              <Sparkles v-else class="w-4 h-4 text-amber-300" />
+              <span>一键使用系统内置 API Key 登录</span>
+            </button>
+            <div class="flex items-center gap-2 my-4">
+              <div class="flex-1 h-px bg-gray-200 dark:bg-gray-800"></div>
+              <span class="text-xs text-gray-400 font-medium">或使用个人 Token</span>
+              <div class="flex-1 h-px bg-gray-200 dark:bg-gray-800"></div>
+            </div>
+          </div>
+
           <div>
             <input 
               v-model="inputToken" 
-              placeholder="ey..." 
+              placeholder="自定义 API Token (ey...)" 
               type="password"
               @keyup.enter="handleLogin"
               class="w-full bg-gray-50 dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-xl p-4 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition font-mono text-sm"
@@ -795,8 +829,8 @@ watch(
             :disabled="authStore.loading || !inputToken"
             class="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 dark:disabled:bg-blue-900 disabled:cursor-not-allowed text-white rounded-xl p-4 transition-colors font-semibold flex justify-center items-center gap-2 shadow-lg shadow-blue-600/20"
           >
-            <Loader2 v-if="authStore.loading" class="w-5 h-5 animate-spin" />
-            {{ authStore.loading ? '正在验证密钥...' : '立即连接' }}
+            <Loader2 v-if="authStore.loading && authStore.token !== '__BUILTIN__'" class="w-5 h-5 animate-spin" />
+            {{ authStore.loading ? '正在验证密钥...' : (authStore.hasBuiltinKey ? '使用个人 Token 连接' : '立即连接') }}
           </button>
         </div>
 
@@ -808,6 +842,18 @@ watch(
             <span class="font-semibold block mb-1">验证失败</span>
             {{ authStore.error === 'Unauthorized' ? 'API Key 无效或已过期，请检查后重试。' : authStore.error }}
           </div>
+        </div>
+
+        <!-- 退出访问权限 (重新锁定/切换访问密钥) -->
+        <div v-if="authStore.siteAuthRequired" class="mt-6 pt-4 border-t border-gray-100 dark:border-gray-800 flex justify-center">
+          <button 
+            @click="authStore.lockSite(); inputToken = ''" 
+            class="text-xs text-gray-500 hover:text-red-600 dark:hover:text-red-400 transition-colors flex items-center gap-1.5 font-medium py-1 px-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50"
+            title="清除当前访问密钥并返回权限验证锁屏"
+          >
+            <Lock class="w-3.5 h-3.5" />
+            <span>退出并切换访问密钥</span>
+          </button>
         </div>
       </div>
     </main>
@@ -908,11 +954,12 @@ watch(
           <div class="flex gap-2">
             <button 
               @click="genStore.generate(); mobileTab = 'canvas'"
-              :disabled="genStore.isGenerating"
+              :disabled="genStore.isGenerating || costInfo.blockedByPermission"
               class="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-gray-800 disabled:text-gray-500 text-white font-medium py-3 rounded-xl shadow-md shadow-blue-600/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2 text-sm"
             >
               <Loader2 v-if="genStore.isGenerating" class="animate-spin w-4 h-4" />
-              {{ genStore.isGenerating ? (genStore.batchTotal > 1 ? `正在生成 (${genStore.batchCurrent}/${genStore.batchTotal})...` : '正在生成中...') : '立即生成图像' }}
+              <Lock v-else-if="costInfo.blockedByPermission" class="w-4 h-4 text-amber-500" />
+              {{ genStore.isGenerating ? (genStore.batchTotal > 1 ? `正在生成 (${genStore.batchCurrent}/${genStore.batchTotal})...` : '正在生成中...') : (costInfo.blockedByPermission ? '访问密钥受限 (禁止付费参数)' : '立即生成图像') }}
             </button>
             <div class="w-20 shrink-0 h-full self-stretch flex">
               <CustomSelect v-model="genStore.batchCount" :options="batchOptions" placement="right" size="lg" class="h-full w-full flex items-center" />
