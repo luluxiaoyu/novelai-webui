@@ -903,15 +903,15 @@ const copyImageToClipboard = async () => {
           </button>
         </div>
 
-        <div class="flex flex-row lg:flex-col gap-3 overflow-auto custom-scrollbar flex-1">
+        <div class="flex flex-col gap-3 overflow-y-auto overflow-x-hidden custom-scrollbar flex-1">
           <div 
             v-for="item in filteredHistory" 
             :key="item.id"
             @click="genStore.currentImage = item; resetZoom(); mobileTab = 'canvas'"
-            class="group relative w-20 h-20 lg:w-full lg:h-32 shrink-0 rounded-lg overflow-hidden cursor-pointer border-2 transition-all"
+            class="group relative w-full h-auto max-h-56 shrink-0 rounded-lg overflow-hidden cursor-pointer border-2 transition-all bg-gray-50 dark:bg-gray-950 flex items-center justify-center"
             :class="genStore.currentImage?.id === item.id ? 'border-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.3)]' : 'border-transparent hover:border-gray-300 dark:hover:border-gray-600'"
           >
-            <img :src="item.url" class="w-full h-full object-cover" />
+            <img :src="item.url" class="w-full h-auto max-h-56 object-contain" />
             
             <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 p-1">
               <button 
