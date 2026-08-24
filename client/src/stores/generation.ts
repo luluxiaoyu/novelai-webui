@@ -34,6 +34,7 @@ export interface GeneratedImage {
 
 
 
+
 const idbStorage = {
   getItem: async (key: string): Promise<string | null> => {
     return new Promise((resolve, reject) => {
@@ -69,6 +70,27 @@ const idbStorage = {
 export const useGenerationStore = defineStore('generation', () => {
   const authStore = useAuthStore();
   
+  // 异步加载历史
+  idbStorage.getItem('history').then((data) => {
+    if (data) {
+      try {
+        const parsed = JSON.parse(data);
+        history.value = parsed;
+        if (history.value.length > 0 && !currentImage.value) {
+          currentImage.value = history.value[0];
+        }
+      } catch (e) {
+        console.error('IDB load error', e);
+      }
+    }
+  });
+
+  import('vue').then(({ watch }) => {
+    watch(history, (newVal) => {
+      idbStorage.setItem('history', JSON.stringify(newVal));
+    }, { deep: true });
+  });
+
   const params = reactive<GenerationParams>({
     prompt: '',
     negative_prompt: '',
