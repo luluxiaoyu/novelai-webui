@@ -54,7 +54,7 @@ export const useGenerationStore = defineStore('generation', () => {
   });
 
   const history = ref<GeneratedImage[]>([]);
-  const promptHistory = ref<Array<{ id: string; prompt: string; negative_prompt: string; timestamp: number }>>([]);
+  const promptHistory = ref<Array<{ id: string; prompt: string; negative_prompt: string; timestamp: number; note?: string; isFavorite?: boolean }>>([]);
   const isGenerating = ref(false);
   const streamPreviewUrl = ref<string | null>(null);
   const error = ref('');
@@ -305,14 +305,25 @@ export const useGenerationStore = defineStore('generation', () => {
 
       // 记录提示词历史
       if (params.prompt.trim()) {
-        promptHistory.value = promptHistory.value.filter(p => p.prompt !== params.prompt);
+        const existingIdx = promptHistory.value.findIndex(p => p.prompt === params.prompt);
+        let preservedNote = undefined;
+        let preservedFav = false;
+        
+        if (existingIdx !== -1) {
+          preservedNote = promptHistory.value[existingIdx].note;
+          preservedFav = promptHistory.value[existingIdx].isFavorite || false;
+          promptHistory.value.splice(existingIdx, 1);
+        }
+
         promptHistory.value.unshift({
           id: Date.now().toString(),
           prompt: params.prompt,
           negative_prompt: params.negative_prompt,
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          note: preservedNote,
+          isFavorite: preservedFav
         });
-        if (promptHistory.value.length > 100) promptHistory.value.pop();
+        if (promptHistory.value.length > 200) promptHistory.value.pop();
       }
       
       // 先解除生成状态，让 UI 立即展示新图并去掉 Loading 遮罩
@@ -391,6 +402,20 @@ export const useGenerationStore = defineStore('generation', () => {
     promptHistory.value = promptHistory.value.filter(p => p.id !== id);
   };
 
+  const toggleFavoritePrompt = (id: string) => {
+    const item = promptHistory.value.find(p => p.id === id);
+    if (item) {
+      item.isFavorite = !item.isFavorite;
+    }
+  };
+
+  const updatePromptNote = (id: string, note: string) => {
+    const item = promptHistory.value.find(p => p.id === id);
+    if (item) {
+      item.note = note;
+    }
+  };
+
   const deleteHistory = (id: string) => {
     history.value = history.value.filter(i => i.id !== id);
     if (currentImage.value?.id === id) {
@@ -423,6 +448,8 @@ export const useGenerationStore = defineStore('generation', () => {
     usePrompt, 
     sendToInpaint,
     deletePromptHistory, 
+    toggleFavoritePrompt,
+    updatePromptNote,
     deleteHistory,
     clearHistory,
     clearFilteredHistory
