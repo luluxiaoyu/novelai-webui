@@ -4,6 +4,7 @@ import { useGenerationStore } from './stores/generation';
 import { saveAs } from 'file-saver';
 import { computed, ref, onMounted } from 'vue';
 import { useDark, useToggle } from '@vueuse/core';
+import CustomSelect from './components/CustomSelect.vue';
 import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, Sparkles, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Star, Check } from 'lucide-vue-next';
 
 const authStore = useAuthStore();
@@ -45,16 +46,49 @@ const filteredPromptHistory = computed(() => {
     if (promptFilter.value === 'yesterday') return item.timestamp >= startOfYesterday && item.timestamp < startOfToday;
     return true; // 'all'
   }).sort((a, b) => {
-    // 收藏置顶
     if (a.isFavorite && !b.isFavorite) return -1;
     if (!a.isFavorite && b.isFavorite) return 1;
-    return 0; // 否则按原有时间顺序（unshift进去的，时间倒序）
+    return 0;
   });
 });
 
 const isV3 = computed(() => {
   return genStore.params.model.includes('-3') || genStore.params.model.includes('safe-diffusion');
 });
+
+const modelOptions = [
+  { value: 'nai-diffusion-5-full', label: 'V5 Full (全量版)' },
+  { value: 'nai-diffusion-5-curated', label: 'V5 Curated (精选版)' },
+  { value: 'nai-diffusion-4-5-full', label: 'V4.5 Full (全量版)' },
+  { value: 'nai-diffusion-4-5-curated', label: 'V4.5 Curated (精选版)' },
+  { value: 'nai-diffusion-4-full', label: 'V4 Full (全量版)' },
+  { value: 'nai-diffusion-4-curated', label: 'V4 Curated (精选版)' },
+  { value: 'nai-diffusion-3', label: 'V3 (Anime)' },
+  { value: 'nai-diffusion-furry-3', label: 'V3 (Furry)' },
+  { value: 'safe-diffusion', label: 'Safe Diffusion' }
+];
+
+const samplerOptions = [
+  { value: 'k_euler', label: 'Euler' },
+  { value: 'k_euler_ancestral', label: 'Euler Ancestral' },
+  { value: 'k_dpmpp_2m', label: 'DPM++ 2M' },
+  { value: 'k_dpmpp_sde', label: 'DPM++ SDE' },
+  { value: 'ddim', label: 'DDIM' }
+];
+
+const historyFilterOptions = [
+  { value: 'today', label: '今天' },
+  { value: 'yesterday', label: '昨天' },
+  { value: 'week', label: '本周' },
+  { value: 'all', label: '全部' }
+];
+
+const promptFilterOptions = [
+  { value: 'all', label: '全部' },
+  { value: 'favorites', label: '我的收藏' },
+  { value: 'today', label: '今天' },
+  { value: 'yesterday', label: '昨天' }
+];
 
 // 计算是否消耗点数及消耗提示
 const costInfo = computed(() => {
@@ -610,36 +644,12 @@ const copyImageToClipboard = async () => {
         <div class="flex flex-col gap-4 pt-4 border-t border-gray-200 dark:border-gray-800 transition-colors">
           <div>
             <label class="block text-xs font-semibold mb-1.5">模型 (Model)</label>
-            <select v-model="genStore.params.model" class="w-full bg-gray-50 dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-500 text-xs cursor-pointer transition-colors">
-              <optgroup label="NAI Diffusion V5">
-                <option value="nai-diffusion-5-full">V5 Full (全量版)</option>
-                <option value="nai-diffusion-5-curated">V5 Curated (精选版)</option>
-              </optgroup>
-              <optgroup label="NAI Diffusion V4.5">
-                <option value="nai-diffusion-4-5-full">V4.5 Full (全量版)</option>
-                <option value="nai-diffusion-4-5-curated">V4.5 Curated (精选版)</option>
-              </optgroup>
-              <optgroup label="NAI Diffusion V4">
-                <option value="nai-diffusion-4-full">V4 Full (全量版)</option>
-                <option value="nai-diffusion-4-curated">V4 Curated (精选版)</option>
-              </optgroup>
-              <optgroup label="NAI Diffusion V3 & 其他">
-                <option value="nai-diffusion-3">V3 (Anime)</option>
-                <option value="nai-diffusion-furry-3">V3 (Furry)</option>
-                <option value="safe-diffusion">Safe Diffusion</option>
-              </optgroup>
-            </select>
+            <CustomSelect v-model="genStore.params.model" :options="modelOptions" />
           </div>
 
           <div>
             <label class="block text-xs font-semibold mb-1.5">采样器 (Sampler)</label>
-            <select v-model="genStore.params.sampler" class="w-full bg-gray-50 dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-500 text-xs cursor-pointer transition-colors">
-              <option value="k_euler">Euler</option>
-              <option value="k_euler_ancestral">Euler Ancestral</option>
-              <option value="k_dpmpp_2m">DPM++ 2M</option>
-              <option value="k_dpmpp_sde">DPM++ SDE</option>
-              <option value="ddim">DDIM</option>
-            </select>
+            <CustomSelect v-model="genStore.params.sampler" :options="samplerOptions" />
           </div>
 
           <div>
@@ -681,11 +691,19 @@ const copyImageToClipboard = async () => {
             </div>
           </div>
 
-          <div class="flex flex-col gap-2 pt-2 border-t border-gray-200 dark:border-gray-800">
-            <label class="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" v-model="genStore.params.enable_stream" class="w-3.5 h-3.5 rounded text-blue-600 border-gray-300 focus:ring-blue-500" />
-              <span class="text-xs font-medium">流式生成 (实时预览)</span>
-            </label>
+          <div class="flex flex-col gap-3 pt-3 border-t border-gray-200 dark:border-gray-800">
+            <div class="flex items-center justify-between cursor-pointer group" @click="genStore.params.enable_stream = !genStore.params.enable_stream" title="允许服务器边画边给你传模糊过程图">
+              <span class="text-xs font-medium text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-gray-100 transition-colors">流式生成 (实时预览)</span>
+              <button 
+                class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors focus:outline-none"
+                :class="genStore.params.enable_stream ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'"
+              >
+                <span 
+                  class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                  :class="genStore.params.enable_stream ? 'translate-x-2' : '-translate-x-2'"
+                />
+              </button>
+            </div>
 
             <template v-if="isV3">
               <label class="flex items-center gap-2 cursor-pointer">
@@ -863,7 +881,7 @@ const copyImageToClipboard = async () => {
         class="
           w-[75vw] max-w-[240px] lg:max-w-none lg:w-56 flex-shrink-0 bg-white dark:bg-gray-900 
           border-l lg:border lg:border-gray-200 dark:border-gray-800 lg:rounded-2xl 
-          p-3 flex flex-col gap-3 overflow-hidden shadow-2xl lg:shadow-none
+          p-3 flex flex-col gap-3 shadow-2xl lg:shadow-none
           transition-transform duration-300 ease-in-out h-full
           fixed inset-y-0 right-0 z-40 lg:static lg:transform-none lg:translate-x-0 pb-24 lg:pb-3
         "
@@ -872,12 +890,7 @@ const copyImageToClipboard = async () => {
         <div class="flex justify-between items-center shrink-0">
           <div class="flex items-center gap-2">
             <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">历史 ({{ filteredHistory.length }})</h3>
-            <select v-model="historyFilter" class="text-[11px] bg-transparent border-none text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 outline-none cursor-pointer appearance-none">
-              <option value="today">今天</option>
-              <option value="yesterday">昨天</option>
-              <option value="week">本周</option>
-              <option value="all">全部</option>
-            </select>
+            <CustomSelect v-model="historyFilter" :options="historyFilterOptions" variant="ghost" placement="left" />
           </div>
           <button 
             v-if="filteredHistory.length > 0"
@@ -941,12 +954,7 @@ const copyImageToClipboard = async () => {
             历史提示词 ({{ filteredPromptHistory.length }})
           </h3>
           <div class="flex items-center gap-4">
-            <select v-model="promptFilter" class="text-sm bg-transparent border-none text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 outline-none cursor-pointer">
-              <option value="all">全部</option>
-              <option value="favorites">我的收藏</option>
-              <option value="today">今天</option>
-              <option value="yesterday">昨天</option>
-            </select>
+            <CustomSelect v-model="promptFilter" :options="promptFilterOptions" variant="ghost" placement="right" />
             <button @click="showPromptHistory = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 transition">
               <X class="w-5 h-5" />
             </button>
