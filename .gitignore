@@ -1,0 +1,40 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Node modules
+node_modules
+dist
+dist-ssr
+*.local
+
+# IDE and Editor files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.class
+*.exe
+*.dll
+*.o
+*.so
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Client / Vue specific
+client/node_modules/
+client/dist/
+
+# Server / Express specific
+server/node_modules/
+server/dist/
