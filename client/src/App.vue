@@ -3,11 +3,11 @@ import { useAuthStore } from './stores/auth';
 import { useGenerationStore } from './stores/generation';
 import { useWebDAVStore } from './stores/webdav';
 import { saveAs } from 'file-saver';
-import { computed, ref, onMounted } from 'vue';
+import { computed, ref, onMounted, watch } from 'vue';
 import { useDark, useToggle } from '@vueuse/core';
 import JSZip from 'jszip';
 import CustomSelect from './components/CustomSelect.vue';
-import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, Sparkles, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud, Cloud, Wifi } from 'lucide-vue-next';
+import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud, Cloud, Wifi } from 'lucide-vue-next';
 
 const authStore = useAuthStore();
 const genStore = useGenerationStore();
@@ -639,6 +639,18 @@ const copyImageToClipboard = async () => {
     }
   }
 };
+
+watch(
+  () => authStore.siteUnlocked,
+  (unlocked) => {
+    if (unlocked) {
+      document.title = 'NovelAI 工作台';
+    } else {
+      document.title = 'Portal';
+    }
+  },
+  { immediate: true }
+);
 </script>
 
 <template>
@@ -693,8 +705,8 @@ const copyImageToClipboard = async () => {
     <template v-else>
       <!-- 头部区域 (优化移动端与PC端适配) -->
       <header class="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-4 py-2.5 flex flex-wrap justify-between items-center gap-2 shadow-sm z-10 shrink-0 transition-colors">
-      <div class="flex items-center gap-2">
-        <Sparkles class="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0" />
+      <div class="flex items-center gap-2.5">
+        <img src="/favicon.png" alt="Logo" class="w-6 h-6 rounded-md object-contain shrink-0" />
         <h1 class="text-lg md:text-xl font-bold tracking-tight whitespace-nowrap">
           NovelAI 工作台
         </h1>
