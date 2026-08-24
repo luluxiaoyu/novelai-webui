@@ -228,5 +228,5 @@ server {
 
 ## 📄 开源许可
 
-本项目遵循 MIT License 协议。
+本项目遵循 GPLv3.0 协议。
 
