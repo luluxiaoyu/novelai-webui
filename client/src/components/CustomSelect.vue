@@ -2,12 +2,15 @@
 import { ref, onMounted, onUnmounted } from 'vue';
 import { ChevronDown } from 'lucide-vue-next';
 
-const props = defineProps<{
-  modelValue: string;
-  options: { value: string; label: string }[];
+const props = withDefaults(defineProps<{
+  modelValue: string | number;
+  options: { value: string | number; label: string }[];
   variant?: 'default' | 'ghost';
   placement?: 'left' | 'right';
-}>();
+  size?: 'sm' | 'lg';
+}>(), {
+  size: 'sm'
+});
 
 const emit = defineEmits(['update:modelValue']);
 
@@ -23,7 +26,7 @@ const closeDropdown = (e: MouseEvent) => {
 onMounted(() => document.addEventListener('click', closeDropdown));
 onUnmounted(() => document.removeEventListener('click', closeDropdown));
 
-const selectOption = (val: string) => {
+const selectOption = (val: string | number) => {
   emit('update:modelValue', val);
   isOpen.value = false;
 };
@@ -34,7 +37,13 @@ const selectOption = (val: string) => {
     <button 
       type="button" 
       @click="isOpen = !isOpen"
-      :class="variant === 'ghost' ? 'text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 flex items-center gap-1 font-medium' : 'w-full flex justify-between items-center bg-gray-50 dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-lg p-2 text-xs focus:ring-2 focus:ring-blue-500 transition-colors'"
+      :class="[
+        variant === 'ghost' 
+          ? 'text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 flex items-center gap-1 font-medium' 
+          : 'w-full flex justify-between items-center bg-gray-50 dark:bg-gray-950 border border-gray-300 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 transition-colors h-full',
+        variant !== 'ghost' && size === 'sm' ? 'rounded-lg p-2 text-xs' : '',
+        variant !== 'ghost' && size === 'lg' ? 'rounded-xl px-3 py-3 text-sm' : ''
+      ]"
     >
       <span class="truncate">{{ options.find(o => o.value === modelValue)?.label || modelValue }}</span>
       <ChevronDown class="w-3.5 h-3.5 opacity-70 shrink-0" />

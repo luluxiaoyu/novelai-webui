@@ -91,6 +91,14 @@ const promptFilterOptions = [
   { value: 'yesterday', label: '昨天' }
 ];
 
+const batchOptions = [
+  { value: 1, label: '1张' },
+  { value: 3, label: '3张' },
+  { value: 5, label: '5张' },
+  { value: 10, label: '10张' },
+  { value: 20, label: '20张' }
+];
+
 // 计算是否消耗点数及消耗提示
 const costInfo = computed(() => {
   const isOpus = authStore.subscriptionTier === 3;
@@ -626,7 +634,7 @@ const copyImageToClipboard = async () => {
         >
           <Layers class="w-5 h-5 mb-0.5" />
           <span class="text-[10px] font-medium leading-none">历史</span>
-          <span v-if="filteredHistory.length > 0" class="absolute top-1 right-2.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-gray-900"></span>
+          <div v-if="filteredHistory.some(i => i.isNew)" class="absolute top-0.5 right-1 bg-blue-500 text-white text-[8px] font-bold px-1 py-px rounded border border-white dark:border-gray-900 shadow-sm leading-tight">新</div>
         </button>
       </div>
 
@@ -675,14 +683,19 @@ const copyImageToClipboard = async () => {
 
           <!-- 生成按钮与点数消耗/免费状态提示 -->
           <div class="flex flex-col gap-2 mt-1">
+          <div class="flex gap-2">
             <button 
               @click="genStore.generate(); mobileTab = 'canvas'"
               :disabled="genStore.isGenerating"
-              class="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-gray-800 disabled:text-gray-500 text-white font-medium py-3 rounded-xl shadow-md shadow-blue-600/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2 text-sm"
+              class="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-gray-800 disabled:text-gray-500 text-white font-medium py-3 rounded-xl shadow-md shadow-blue-600/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2 text-sm"
             >
               <Loader2 v-if="genStore.isGenerating" class="animate-spin w-4 h-4" />
-              {{ genStore.isGenerating ? '正在生成中...' : '立即生成图像' }}
+              {{ genStore.isGenerating ? (genStore.batchTotal > 1 ? `正在生成 (${genStore.batchCurrent}/${genStore.batchTotal})...` : '正在生成中...') : '立即生成图像' }}
             </button>
+            <div class="w-20 shrink-0 h-full self-stretch flex">
+              <CustomSelect v-model="genStore.batchCount" :options="batchOptions" placement="right" size="lg" class="h-full w-full flex items-center" />
+            </div>
+          </div>
 
             <!-- 费用预估警告标签 (超出免费限制显示黄色/橙色警告，免费显示绿色) -->
             <div class="flex items-center justify-between px-2.5 py-1.5 rounded-lg border text-xs transition-colors"
@@ -973,10 +986,12 @@ const copyImageToClipboard = async () => {
           <div 
             v-for="item in filteredHistory" 
             :key="item.id"
-            @click="genStore.currentImage = item; resetZoom(); mobileTab = 'canvas'"
+            @click="item.isNew = false; genStore.currentImage = item; resetZoom(); mobileTab = 'canvas'"
             class="group relative w-full h-auto max-h-56 shrink-0 rounded-lg overflow-hidden cursor-pointer border-2 transition-all bg-gray-50 dark:bg-gray-950 flex items-center justify-center"
             :class="genStore.currentImage?.id === item.id ? 'border-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.3)]' : 'border-transparent hover:border-gray-300 dark:hover:border-gray-600'"
           >
+            <!-- 未读标签指示器 -->
+            <div v-if="item.isNew" class="absolute top-2 right-2 bg-blue-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-sm z-20 pointer-events-none tracking-widest border border-blue-400/50" style="text-indent: 0.1em;">新</div>
             <img :src="item.url" class="w-full h-auto max-h-56 object-contain" />
             
             <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 p-1">

@@ -30,6 +30,7 @@ export interface GeneratedImage {
   url: string;
   params: GenerationParams;
   timestamp: number;
+  isNew?: boolean;
 }
 
 
@@ -116,7 +117,11 @@ export const useGenerationStore = defineStore('generation', () => {
   const error = ref('');
   const currentImage = ref<GeneratedImage | null>(null);
 
-  const generate = async () => {
+  const batchCount = ref<number>(1);
+  const batchTotal = ref<number>(0);
+  const batchCurrent = ref<number>(0);
+
+  const generateSingleImage = async () => {
     if (!authStore.token) return;
     
     isGenerating.value = true;
@@ -305,7 +310,8 @@ export const useGenerationStore = defineStore('generation', () => {
                             id: Date.now().toString(),
                             url: finalUrl,
                             params: JSON.parse(JSON.stringify({...params, seed: seedToUse})),
-                            timestamp: Date.now()
+                            timestamp: Date.now(),
+isNew: true
                           };
                           currentImage.value = generated;
                           history.value.unshift(generated);
@@ -331,7 +337,8 @@ export const useGenerationStore = defineStore('generation', () => {
               id: Date.now().toString(),
               url: streamPreviewUrl.value,
               params: JSON.parse(JSON.stringify({...params, seed: seedToUse})),
-              timestamp: Date.now()
+              timestamp: Date.now(),
+isNew: true
             };
             currentImage.value = generated;
             history.value.unshift(generated);
@@ -357,7 +364,8 @@ export const useGenerationStore = defineStore('generation', () => {
             id: Date.now().toString(),
             url: dataUrl,
             params: JSON.parse(JSON.stringify({...params, seed: seedToUse})),
-            timestamp: Date.now()
+            timestamp: Date.now(),
+isNew: true
           };
           
           currentImage.value = generated;
@@ -447,6 +455,34 @@ export const useGenerationStore = defineStore('generation', () => {
     }
   };
 
+  const generate = async () => {
+    if (!authStore.token) return;
+    
+    // 如果已经有任务在生成中，或者 batchCount 不正确，直接退
+    if (isGenerating.value || batchCount.value < 1) return;
+
+    batchTotal.value = batchCount.value;
+    batchCurrent.value = 1;
+
+    for (let i = 0; i < batchTotal.value; i++) {
+      batchCurrent.value = i + 1;
+      
+      await generateSingleImage();
+      
+      // 如果生成过程中发生错误，终止循环
+      if (error.value) break;
+
+      // 不是最后一张图的话，等待随机时间
+      if (i < batchTotal.value - 1) {
+        const delay = Math.random() * 500 + 500; // 0.5 - 1s
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+
+    batchTotal.value = 0;
+    batchCurrent.value = 0;
+  };
+
   const useParams = (historyItem: GeneratedImage) => {
     Object.assign(params, historyItem.params);
     params.seed = -1; // 默认还原为随机种子，防止误点导致生成完全一样的图
@@ -505,7 +541,10 @@ export const useGenerationStore = defineStore('generation', () => {
     params, 
     history, 
     promptHistory, 
-    isGenerating, 
+    isGenerating,
+    batchCount,
+    batchTotal,
+    batchCurrent,
     streamPreviewUrl,
     error, 
     currentImage, 
