@@ -223,6 +223,8 @@ server {
 | `ENABLE_ENCRYPTION` | `false` | 是否开启前后端通信双向混淆加密 |
 | `VITE_ENABLE_ENCRYPTION` | `false` | 客户端加解密开关（需与服务端保持一致） |
 | `ENABLE_LOGS` | `true` | 是否开启生图参数日志记录（按日期和用户密钥自动分类归档） |
+| `BUILTIN_CONCURRENCY` | `1` | 内置 Key 生图排队队列最大并发数（默认 1，保障免费额度不产生 429 冲突） |
+| `QUEUE_TIMEOUT_SECONDS` | `120` | 排队等待最大超时秒数 |
 
 ---
 

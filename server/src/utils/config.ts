@@ -111,3 +111,21 @@ export const isLoggingEnabled = (): boolean => {
   if (val === 'false' || val === '0') return false;
   return true; // 默认开启
 };
+
+export const getBuiltinConcurrency = (): number => {
+  const val = process.env.BUILTIN_CONCURRENCY || process.env.QUEUE_CONCURRENCY;
+  if (val) {
+    const parsed = parseInt(val, 10);
+    if (!isNaN(parsed) && parsed > 0) return parsed;
+  }
+  return 1; // 默认内置 Key 并发数: 1 (防止免费额度 429 冲突)
+};
+
+export const getQueueTimeoutSeconds = (): number => {
+  const val = process.env.QUEUE_TIMEOUT_SECONDS || process.env.QUEUE_TIMEOUT;
+  if (val) {
+    const parsed = parseInt(val, 10);
+    if (!isNaN(parsed) && parsed > 0) return parsed;
+  }
+  return 120; // 默认排队超时: 120 秒
+};
