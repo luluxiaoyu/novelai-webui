@@ -119,14 +119,24 @@ export const useAuthStore = defineStore('auth', () => {
         if (data) {
           subSuccess = true;
           // Opus 用户的 tier 值为 3
-          subscriptionTier.value = data.tier ?? 0;
-          active.value = data.active ?? false;
+          if (typeof data.tier === 'number') {
+            subscriptionTier.value = data.tier;
+          }
+          if (data.active !== undefined) {
+            active.value = !!data.active;
+          }
           // 准确提取 V5 免费动态额度
-          if (data.usage?.percent !== undefined) {
+          if (data.usage && typeof data.usage.percent === 'number') {
             v5UsagePercent.value = data.usage.percent;
           }
-          if (data.trainingStepsLeft?.purchased !== undefined) {
-            trainingSteps.value = data.trainingStepsLeft.purchased;
+          // 计算 Anlas 点数 (Fixed + Purchased training steps)
+          if (data.trainingStepsLeft) {
+            const fixed = data.trainingStepsLeft.fixedTrainingStepsLeft ?? data.trainingStepsLeft.fixed ?? 0;
+            const purchased = data.trainingStepsLeft.purchasedTrainingSteps ?? data.trainingStepsLeft.purchased ?? 0;
+            trainingSteps.value = fixed + purchased;
+            anlas.value = fixed + purchased;
+          } else if (typeof data.anlas === 'number') {
+            anlas.value = data.anlas;
           }
         }
       } catch (err: any) {
@@ -143,15 +153,28 @@ export const useAuthStore = defineStore('auth', () => {
         const uData = dataRes.data;
         if (uData) {
           if (uData.subscription) {
-            if (!subSuccess) {
-              subscriptionTier.value = uData.subscription.tier ?? 0;
-              active.value = uData.subscription.active ?? false;
+            if (!subSuccess && typeof uData.subscription.tier === 'number') {
+              subscriptionTier.value = uData.subscription.tier;
             }
-            if (uData.subscription.usage?.percent !== undefined) {
+            if (!subSuccess && uData.subscription.active !== undefined) {
+              active.value = !!uData.subscription.active;
+            }
+            if (uData.subscription.usage && typeof uData.subscription.usage.percent === 'number') {
               v5UsagePercent.value = uData.subscription.usage.percent;
             }
+            if (uData.subscription.trainingStepsLeft) {
+              const fixed = uData.subscription.trainingStepsLeft.fixedTrainingStepsLeft ?? uData.subscription.trainingStepsLeft.fixed ?? 0;
+              const purchased = uData.subscription.trainingStepsLeft.purchasedTrainingSteps ?? uData.subscription.trainingStepsLeft.purchased ?? 0;
+              trainingSteps.value = fixed + purchased;
+              anlas.value = fixed + purchased;
+            }
           }
-          if (uData.anlas !== undefined) {
+          if (uData.trainingStepsLeft) {
+            const fixed = uData.trainingStepsLeft.fixedTrainingStepsLeft ?? uData.trainingStepsLeft.fixed ?? 0;
+            const purchased = uData.trainingStepsLeft.purchasedTrainingSteps ?? uData.trainingStepsLeft.purchased ?? 0;
+            trainingSteps.value = fixed + purchased;
+            anlas.value = fixed + purchased;
+          } else if (typeof uData.anlas === 'number') {
             anlas.value = uData.anlas;
           }
           return true;

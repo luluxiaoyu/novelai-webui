@@ -859,7 +859,7 @@ watch(
             {{ authStore.token === '__BUILTIN__' ? '内置 API Key' : (authStore.subscriptionTier === 3 ? 'Opus 会员' : (authStore.subscriptionTier === 2 ? 'Scroll 会员' : (authStore.subscriptionTier === 1 ? 'Tablet 会员' : '免费/未定'))) }}
           </span>
           <span class="text-xs bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2.5 py-1.5 rounded-md border border-blue-200 dark:border-blue-800 font-medium whitespace-nowrap">
-            anals: {{ authStore.anlas.toLocaleString() }}
+            Anlas: {{ authStore.anlas.toLocaleString() }}
           </span>
 
           <!-- V5 额度进度条徽章 (适配移动端，默认100%满，超出以100%进度显示) -->

@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 export const naiUserClient = axios.create({
-  baseURL: 'https://image.novelai.net',
+  baseURL: 'https://api.novelai.net',
 });
 
 export const naiImageClient = axios.create({
