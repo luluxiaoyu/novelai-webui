@@ -1,5 +1,7 @@
 # NovelAI Proxy & Web Client
 
+**Vibe Coding速成产物，仅做了功能验证，请自行考虑是否使用。**
+
 一个轻量、现代且功能全面的 **NovelAI 图像生成代理服务与 Web 客户端**。
 
 前端基于 Vue 3 + Vite 构建，后端基于 Node.js Express 提供接口代理、鉴权、双向加密及 WebDAV 同步中继服务。
@@ -117,7 +119,7 @@ pnpm run dev
    ```bash
    # 启动服务并在后台持久运行，日志输出到 server.log
    nohup pnpm start > server.log 2>&1 &
-
+   
    # 查看运行日志
    tail -f server.log
    ```
@@ -150,7 +152,7 @@ Linux 官方标准服务管理方案，**无需安装任何额外第三方进程
    [Unit]
    Description=NovelAI Proxy & Web Client Service
    After=network.target
-
+   
    [Service]
    Type=simple
    User=root
@@ -159,7 +161,7 @@ Linux 官方标准服务管理方案，**无需安装任何额外第三方进程
    Restart=always
    RestartSec=5
    Environment=NODE_ENV=production
-
+   
    [Install]
    WantedBy=multi-user.target
    ```
@@ -169,13 +171,13 @@ Linux 官方标准服务管理方案，**无需安装任何额外第三方进程
    ```bash
    # 重载系统配置
    sudo systemctl daemon-reload
-
+   
    # 启动服务并设置开机自启
    sudo systemctl enable --now novelai-proxy
-
+   
    # 查看服务运行状态
    sudo systemctl status novelai-proxy
-
+   
    # 查看实时输出日志
    sudo journalctl -u novelai-proxy -f
    ```
