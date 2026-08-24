@@ -105,3 +105,9 @@ export const getBuiltinToken = (): string => {
 export const hasBuiltinToken = (): boolean => {
   return Boolean(getBuiltinToken());
 };
+
+export const isLoggingEnabled = (): boolean => {
+  const val = process.env.ENABLE_LOGS ?? process.env.ENABLE_LOGGING;
+  if (val === 'false' || val === '0') return false;
+  return true; // 默认开启
+};

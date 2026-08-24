@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { forwardRequest, naiImageClient } from '../utils/proxy';
 import { resolveNovelAIToken, validateFreeTierParameters } from '../utils/token';
+import { logGeneration } from '../utils/logger';
 import axios from 'axios';
 
 export const generateImage = async (req: Request, res: Response) => {
@@ -9,6 +10,7 @@ export const generateImage = async (req: Request, res: Response) => {
 
   const freeTierCheck = validateFreeTierParameters(req);
   if (!freeTierCheck.allowed) {
+    logGeneration(req, 'normal', 'failed', { error: freeTierCheck.reason });
     return res.status(403).json({ error: freeTierCheck.reason });
   }
 
@@ -31,6 +33,8 @@ export const generateImage = async (req: Request, res: Response) => {
       timeout: 120000
     });
 
+    logGeneration(req, 'normal', 'success');
+
     if (isZip) {
       res.setHeader('Content-Type', 'application/zip');
       return res.status(201).send(response.data);
@@ -39,16 +43,17 @@ export const generateImage = async (req: Request, res: Response) => {
     }
   } catch (error: any) {
     console.error(`Error generating image:`, error.message);
-    if (error.response) {
-      let parsedData = error.response.data;
-      if (parsedData instanceof Buffer) {
-        const text = parsedData.toString('utf-8');
-        try {
-          parsedData = JSON.parse(text);
-        } catch {
-          parsedData = { message: text };
-        }
+    let parsedData = error.response?.data;
+    if (parsedData instanceof Buffer) {
+      const text = parsedData.toString('utf-8');
+      try {
+        parsedData = JSON.parse(text);
+      } catch {
+        parsedData = { message: text };
       }
+    }
+    logGeneration(req, 'normal', 'failed', { error: parsedData || error.message });
+    if (error.response) {
       console.error(`NovelAI upstream error [${error.response.status}]:`, JSON.stringify(parsedData));
       return res.status(error.response.status).json(parsedData);
     }
@@ -62,6 +67,7 @@ export const generateImageStream = async (req: Request, res: Response) => {
 
   const freeTierCheck = validateFreeTierParameters(req);
   if (!freeTierCheck.allowed) {
+    logGeneration(req, 'stream', 'failed', { error: freeTierCheck.reason });
     return res.status(403).json({ error: freeTierCheck.reason });
   }
 
@@ -75,6 +81,8 @@ export const generateImageStream = async (req: Request, res: Response) => {
       responseType: 'stream'
     });
 
+    logGeneration(req, 'stream', 'processing');
+
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
@@ -82,6 +90,7 @@ export const generateImageStream = async (req: Request, res: Response) => {
     response.data.pipe(res);
   } catch (error: any) {
     console.error('Error in streaming generation:', error.message);
+    logGeneration(req, 'stream', 'failed', { error: error.response?.data || error.message });
     if (error.response) {
       if (typeof error.response.data?.on === 'function') {
         return res.status(error.response.status).json({ error: 'Upstream generation error', status: error.response.status });
