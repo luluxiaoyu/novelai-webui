@@ -192,9 +192,9 @@ const filteredHistory = computed(() => {
 });
 
 const customPromptGroups = computed(() => {
-  const groups = new Set<string>();
+  const groups = new Set<string>(genStore.savedPromptGroups || []);
   genStore.promptHistory.forEach(p => {
-    if (p.group) groups.add(p.group);
+    if (p.group && p.group.trim()) groups.add(p.group.trim());
   });
   return Array.from(groups).sort();
 });

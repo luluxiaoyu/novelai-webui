@@ -124,6 +124,7 @@ export const useGenerationStore = defineStore('generation', () => {
 
   const history = ref<GeneratedImage[]>([]);
   const promptHistory = ref<Array<{ id: string; prompt: string; negative_prompt: string; timestamp: number; note?: string; isFavorite?: boolean; group?: string }>>([]);
+  const savedPromptGroups = ref<string[]>([]);
   const isGenerating = ref(false);
   const streamPreviewUrl = ref<string | null>(null);
   const error = ref('');
@@ -427,10 +428,12 @@ export const useGenerationStore = defineStore('generation', () => {
         const existingIdx = promptHistory.value.findIndex(p => p.prompt === params.prompt);
         let preservedNote = undefined;
         let preservedFav = false;
+        let preservedGroup = undefined;
         
         if (existingIdx !== -1) {
           preservedNote = promptHistory.value[existingIdx].note;
           preservedFav = promptHistory.value[existingIdx].isFavorite || false;
+          preservedGroup = promptHistory.value[existingIdx].group;
           promptHistory.value.splice(existingIdx, 1);
         }
 
@@ -440,9 +443,10 @@ export const useGenerationStore = defineStore('generation', () => {
           negative_prompt: params.negative_prompt,
           timestamp: Date.now(),
           note: preservedNote,
-          isFavorite: preservedFav
+          isFavorite: preservedFav,
+          group: preservedGroup
         });
-        if (promptHistory.value.length > 200) promptHistory.value.pop();
+        if (promptHistory.value.length > 500) promptHistory.value.pop();
       }
       
       // 先解除生成状态，让 UI 立即展示新图并去掉 Loading 遮罩
@@ -567,9 +571,13 @@ export const useGenerationStore = defineStore('generation', () => {
   };
 
   const updatePromptGroup = (id: string, group: string) => {
+    const trimmed = group.trim();
     const item = promptHistory.value.find(p => p.id === id);
     if (item) {
-      item.group = group.trim() || undefined;
+      item.group = trimmed || undefined;
+      if (trimmed && !savedPromptGroups.value.includes(trimmed)) {
+        savedPromptGroups.value.push(trimmed);
+      }
       useWebDAVStore().autoSyncMetadata(useGenerationStore());
     }
   };
@@ -620,6 +628,7 @@ export const useGenerationStore = defineStore('generation', () => {
     params, 
     history, 
     promptHistory, 
+    savedPromptGroups,
     isGenerating,
     batchCount,
     batchTotal,
@@ -643,7 +652,7 @@ export const useGenerationStore = defineStore('generation', () => {
 }, {
   persist: [
     {
-      pick: ['params', 'promptHistory'],
+      pick: ['params', 'promptHistory', 'savedPromptGroups'],
       storage: localStorage
     },
     {
