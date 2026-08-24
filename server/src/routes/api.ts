@@ -1,8 +1,17 @@
 import { Router } from 'express';
 import { getUserSubscription, getUserData, getUserInformation } from '../controllers/user';
 import { generateImage, generateImageStream, suggestTags } from '../controllers/image';
+import { getAuthStatus, verifyAccessKey } from '../controllers/auth';
+import { siteAuthMiddleware } from '../middlewares/auth';
 
 const router = Router();
+
+// 公开接口：用于前端探测是否需要站点访问密钥验证及验证操作
+router.get('/auth/status', getAuthStatus);
+router.post('/auth/verify-access', verifyAccessKey);
+
+// 受保护的代理与生成接口（若开启了 ENABLE_SITE_AUTH，需携带 x-access-key）
+router.use(siteAuthMiddleware);
 
 router.get('/user/subscription', getUserSubscription);
 router.get('/user/data', getUserData);

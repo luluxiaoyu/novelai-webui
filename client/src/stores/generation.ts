@@ -123,12 +123,17 @@ export const useGenerationStore = defineStore('generation', () => {
     error.value = '';
     
     try {
+      const headers: Record<string, string> = {
+        'Authorization': `Bearer ${authStore.token}`,
+        'Accept': 'application/zip'
+      };
+      if (authStore.siteAccessKey) {
+        headers['x-access-key'] = authStore.siteAccessKey;
+      }
+
       const api = axios.create({
         baseURL: '/api',
-        headers: {
-          'Authorization': `Bearer ${authStore.token}`,
-          'Accept': 'application/zip'
-        },
+        headers,
         responseType: 'arraybuffer'
       });
       
@@ -224,12 +229,17 @@ export const useGenerationStore = defineStore('generation', () => {
         const timeoutId = setTimeout(() => controller.abort(), 120000);
 
         try {
+          const fetchHeaders: Record<string, string> = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authStore.token}`
+          };
+          if (authStore.siteAccessKey) {
+            fetchHeaders['x-access-key'] = authStore.siteAccessKey;
+          }
+
           const response = await fetch('/api/generate-image-stream', {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${authStore.token}`
-            },
+            headers: fetchHeaders,
             body: JSON.stringify(payload),
             signal: controller.signal
           });

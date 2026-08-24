@@ -5,7 +5,7 @@ import { saveAs } from 'file-saver';
 import { computed, ref, onMounted } from 'vue';
 import { useDark, useToggle } from '@vueuse/core';
 import CustomSelect from './components/CustomSelect.vue';
-import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, Sparkles, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Star, Check } from 'lucide-vue-next';
+import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, Sparkles, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Star, Check, Lock } from 'lucide-vue-next';
 
 const authStore = useAuthStore();
 const genStore = useGenerationStore();
@@ -14,6 +14,7 @@ const isDark = useDark();
 const toggleDark = useToggle(isDark);
 
 const inputToken = ref('');
+const inputAccessKey = ref('');
 const showPromptHistory = ref(false);
 const mobileTab = ref<'canvas' | 'controls' | 'history'>('canvas');
 const historyFilter = ref('today');
@@ -371,8 +372,10 @@ const clearInpaint = () => {
   showMaskEditor.value = false;
 };
 
-// 页面加载或刷新时，自动重置可能挂起的生成状态、清空临时底图与遮罩，并重新获取最新余额
-onMounted(() => {
+// 页面加载或刷新时，自动探测服务端是否要求密钥验证，并重置可能挂起的生成状态、清空临时底图与遮罩，并重新获取最新余额
+onMounted(async () => {
+  await authStore.checkSiteAuthStatus();
+
   genStore.isGenerating = false;
   genStore.streamPreviewUrl = null;
   genStore.params.image = undefined;
@@ -383,15 +386,30 @@ onMounted(() => {
     genStore.currentImage = genStore.history[0];
   }
 
-  if (authStore.token) {
+  if (authStore.siteUnlocked && authStore.token) {
     authStore.fetchUserData();
   }
 });
 
+const handleVerifyAccess = async () => {
+  if (inputAccessKey.value.trim()) {
+    const success = await authStore.verifySiteAccess(inputAccessKey.value.trim());
+    if (success) {
+      inputAccessKey.value = '';
+      if (authStore.token) {
+        authStore.fetchUserData();
+      }
+    }
+  }
+};
+
 const handleLogin = async () => {
   if (inputToken.value.trim()) {
     authStore.error = '';
-    await authStore.login(inputToken.value.trim());
+    const success = await authStore.login(inputToken.value.trim());
+    if (success) {
+      inputToken.value = '';
+    }
   }
 };
 
@@ -428,8 +446,56 @@ const copyImageToClipboard = async () => {
 
 <template>
   <div class="h-screen flex flex-col overflow-hidden">
-    <!-- 头部区域 (优化移动端与PC端适配) -->
-    <header class="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-4 py-2.5 flex flex-wrap justify-between items-center gap-2 shadow-sm z-10 shrink-0 transition-colors">
+    <!-- 初始探测服务配置时保持纯净空白背景，防止任何内容闪烁 -->
+    <div 
+      v-if="!authStore.siteAuthChecked" 
+      class="flex-1 h-screen bg-gray-100 dark:bg-gray-950 transition-colors"
+    ></div>
+
+    <!-- 站点访问密钥验证界面 (若开启了站点安全验证且未解锁，全屏仅展示纯净验证卡片，隐藏顶部栏和一切项目标识) -->
+    <main 
+      v-else-if="authStore.siteAuthRequired && !authStore.siteUnlocked"
+      class="flex-1 h-screen flex items-center justify-center p-4 bg-gray-100 dark:bg-gray-950 transition-colors select-none"
+    >
+      <div class="max-w-sm w-full bg-white dark:bg-gray-900 p-8 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-2xl transition-colors flex flex-col items-center">
+        <div class="p-4 bg-gray-100 dark:bg-gray-800 rounded-full mb-5 text-gray-700 dark:text-gray-300">
+          <Lock class="w-8 h-8" />
+        </div>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-gray-100 tracking-wide mb-1.5">访问权限验证</h2>
+        <p class="text-xs text-gray-500 dark:text-gray-400 text-center mb-6">请输入访问密钥以解锁并进入系统</p>
+
+        <div class="w-full space-y-4">
+          <div>
+            <input 
+              v-model="inputAccessKey" 
+              type="password" 
+              placeholder="输入访问密钥..."
+              @keyup.enter="handleVerifyAccess"
+              class="w-full bg-gray-50 dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition text-center tracking-widest placeholder:tracking-normal placeholder:text-gray-400 font-mono"
+              autofocus
+            />
+          </div>
+
+          <button 
+            @click="handleVerifyAccess" 
+            :disabled="authStore.siteAuthLoading || !inputAccessKey.trim()"
+            class="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 dark:disabled:bg-gray-800 disabled:text-gray-400 disabled:cursor-not-allowed text-white font-medium py-3 rounded-xl transition shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 text-sm"
+          >
+            <Loader2 v-if="authStore.siteAuthLoading" class="w-4 h-4 animate-spin" />
+            {{ authStore.siteAuthLoading ? '正在验证...' : '确认进入' }}
+          </button>
+        </div>
+
+        <div v-if="authStore.siteAuthError" class="mt-4 w-full p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/60 text-red-600 dark:text-red-400 text-xs text-center font-medium">
+          {{ authStore.siteAuthError }}
+        </div>
+      </div>
+    </main>
+
+    <!-- 正常工作台流程 (通过密钥验证后才渲染顶部栏与后续页面) -->
+    <template v-else>
+      <!-- 头部区域 (优化移动端与PC端适配) -->
+      <header class="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-4 py-2.5 flex flex-wrap justify-between items-center gap-2 shadow-sm z-10 shrink-0 transition-colors">
       <div class="flex items-center gap-2">
         <Sparkles class="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0" />
         <h1 class="text-lg md:text-xl font-bold tracking-tight whitespace-nowrap">
@@ -1006,7 +1072,8 @@ const copyImageToClipboard = async () => {
         </div>
       </div>
     </div>
-  </div>
+  </template>
+</div>
 </template>
 
 <style>

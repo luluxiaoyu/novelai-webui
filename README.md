@@ -51,4 +51,17 @@ pnpm run build
 
 ## Environment Variables
 
-Create a `.env` file in the `server` directory (or specify via environment variables during deployment). The client relies on the server for API routing, so make sure the server URL is correctly referenced if deploying to a different host.
+Copy `.env.example` to `.env` in the root or `server/` directory:
+
+```bash
+cp .env.example .env
+```
+
+Available variables:
+
+| Variable | Default | Description |
+|---|---|---|
+| `PORT` | `3000` | Server listening port |
+| `ENABLE_SITE_AUTH` | `true` | Enable site-level passcode verification |
+| `ACCESS_PASSWORD` | - | Secret passcode required before accessing the site |
+

@@ -12,6 +12,62 @@ export const useAuthStore = defineStore('auth', () => {
   const v5UsagePercent = ref<number>(0);
   const trainingSteps = ref<number>(0);
 
+  // 站点访问密码 / 密钥验证状态
+  const siteAuthRequired = ref<boolean>(false);
+  const siteUnlocked = ref<boolean>(false);
+  const siteAccessKey = ref<string>('');
+  const siteAuthLoading = ref<boolean>(false);
+  const siteAuthError = ref<string>('');
+  const siteAuthChecked = ref<boolean>(false);
+
+  const checkSiteAuthStatus = async () => {
+    try {
+      siteAuthLoading.value = true;
+      siteAuthError.value = '';
+      const res = await axios.get('/api/auth/status', {
+        headers: siteAccessKey.value ? { 'x-access-key': siteAccessKey.value } : {}
+      });
+      siteAuthRequired.value = !!res.data.requiresAuth;
+      if (!siteAuthRequired.value) {
+        siteUnlocked.value = true;
+      } else {
+        siteUnlocked.value = !!res.data.isVerified;
+      }
+      return siteUnlocked.value;
+    } catch (e: any) {
+      console.warn('Check site auth status error:', e);
+      return false;
+    } finally {
+      siteAuthLoading.value = false;
+      siteAuthChecked.value = true;
+    }
+  };
+
+  const verifySiteAccess = async (inputKey: string) => {
+    if (!inputKey || !inputKey.trim()) {
+      siteAuthError.value = '请输入访问密钥';
+      return false;
+    }
+    try {
+      siteAuthLoading.value = true;
+      siteAuthError.value = '';
+      const res = await axios.post('/api/auth/verify-access', { accessKey: inputKey.trim() });
+      if (res.data.success) {
+        siteAccessKey.value = inputKey.trim();
+        siteUnlocked.value = true;
+        siteAuthError.value = '';
+        return true;
+      }
+      siteAuthError.value = res.data.message || '访问密钥错误';
+      return false;
+    } catch (e: any) {
+      siteAuthError.value = e.response?.data?.message || '访问密钥错误或验证失败';
+      return false;
+    } finally {
+      siteAuthLoading.value = false;
+    }
+  };
+
   const fetchUserData = async (tokenToTest?: string) => {
     const targetToken = tokenToTest || token.value;
     if (!targetToken) return false;
@@ -19,18 +75,26 @@ export const useAuthStore = defineStore('auth', () => {
     loading.value = true;
     error.value = '';
     try {
+      const headers: Record<string, string> = {
+        'Authorization': `Bearer ${targetToken}`
+      };
+      if (siteAccessKey.value) {
+        headers['x-access-key'] = siteAccessKey.value;
+      }
+
       const api = axios.create({
         baseURL: '/api',
-        headers: {
-          'Authorization': `Bearer ${targetToken}`
-        }
+        headers
       });
       
+      let subSuccess = false;
+
       // 1. 从 /user/subscription 读取订阅等级、点数与 V5 usage
       try {
         const subRes = await api.get('/user/subscription');
         const data = subRes.data;
         if (data) {
+          subSuccess = true;
           if (typeof data.tier === 'number') {
             subscriptionTier.value = data.tier;
           }
@@ -50,6 +114,10 @@ export const useAuthStore = defineStore('auth', () => {
           }
         }
       } catch (err: any) {
+        if (err.response?.status === 401 || err.status === 401) {
+          error.value = 'API Token 无效或已过期，请检查后重试。';
+          return false;
+        }
         console.warn('读取 /user/subscription 异常:', err.message);
       }
       
@@ -58,6 +126,7 @@ export const useAuthStore = defineStore('auth', () => {
         const dataRes = await api.get('/user/data');
         const d = dataRes.data;
         if (d) {
+          subSuccess = true;
           if (d.subscription) {
             if (typeof d.subscription.anlas === 'number') {
               anlas.value = d.subscription.anlas;
@@ -74,14 +143,31 @@ export const useAuthStore = defineStore('auth', () => {
           }
         }
       } catch (err: any) {
+        if (err.response?.status === 401 || err.status === 401) {
+          error.value = 'API Token 无效或已过期，请检查后重试。';
+          return false;
+        }
         console.warn('读取 /user/data 异常:', err.message);
       }
 
-      // 3. 登录成功
+      // 如果是登录时测试 Token，但接口均未成功响应，则拒绝放行
+      if (tokenToTest && !subSuccess) {
+        error.value = error.value || '无法验证该 API Token，请确认其是否有效。';
+        return false;
+      }
+
       return true;
     } catch (e: any) {
       console.error('Fetch user data failed:', e);
-      return true; // 即使额外数据获取遇到网络问题，依然放行使用 Token
+      if (e.response?.status === 401 || e.status === 401) {
+        error.value = 'API Token 无效或已过期，请检查后重试。';
+        return false;
+      }
+      if (tokenToTest) {
+        error.value = e.response?.data?.message || e.message || '连接失败，请检查网络或 Token';
+        return false;
+      }
+      return false;
     } finally {
       loading.value = false;
     }
@@ -91,6 +177,11 @@ export const useAuthStore = defineStore('auth', () => {
     const success = await fetchUserData(newToken);
     if (success) {
       token.value = newToken;
+      error.value = '';
+      return true;
+    } else {
+      token.value = '';
+      return false;
     }
   };
   
@@ -104,7 +195,13 @@ export const useAuthStore = defineStore('auth', () => {
     error.value = '';
   };
 
-  return { token, anlas, subscriptionTier, active, v5UsagePercent, trainingSteps, loading, error, login, logout, fetchUserData };
+  return { 
+    token, anlas, subscriptionTier, active, v5UsagePercent, trainingSteps, loading, error, 
+    siteAuthRequired, siteUnlocked, siteAccessKey, siteAuthLoading, siteAuthError, siteAuthChecked,
+    checkSiteAuthStatus, verifySiteAccess, login, logout, fetchUserData 
+  };
 }, {
-  persist: true
+  persist: {
+    pick: ['token', 'siteAccessKey']
+  }
 });
