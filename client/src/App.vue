@@ -1835,11 +1835,7 @@ watch(
               class="transition-transform duration-75 flex items-center justify-center max-w-full max-h-full"
               :style="{ transform: `translate(${imgTranslate.x}px, ${imgTranslate.y}px) scale(${imgScale})` }"
             >
-              <img :src="genStore.streamPreviewUrl" class="max-w-[85vw] max-h-[85vh] object-contain drop-shadow-2xl pointer-events-none" />
-            </div>
-            <div class="absolute bottom-24 sm:bottom-4 left-4 bg-blue-600/90 text-white text-xs px-3 py-1.5 rounded-full backdrop-blur flex items-center gap-1.5 shadow-lg animate-pulse z-20">
-              <Loader2 class="w-3.5 h-3.5 animate-spin" />
-              正在流式去噪渲染...
+              <img :src="genStore.streamPreviewUrl" class="max-w-[85vw] max-h-[85vh] object-contain drop-shadow-2xl pointer-events-none rounded-lg" />
             </div>
           </template>
 
@@ -1849,23 +1845,6 @@ watch(
               :style="{ transform: `translate(${imgTranslate.x}px, ${imgTranslate.y}px) scale(${imgScale})` }"
             >
               <img :src="genStore.currentImage.url" class="max-w-[85vw] max-h-[85vh] object-contain drop-shadow-2xl pointer-events-none rounded-lg" />
-              
-              <!-- 加载遮罩 (当正在生成且不使用流式时显示) -->
-              <div v-if="genStore.isGenerating && !genStore.streamPreviewUrl" class="absolute inset-0 bg-black/50 backdrop-blur-sm flex flex-col items-center justify-center rounded-lg z-10 text-white p-4 text-center">
-                <template v-if="genStore.queueInfo && genStore.queueInfo.waiting > 0">
-                  <div class="p-3 bg-amber-500/20 border border-amber-400/40 rounded-2xl flex items-center gap-2.5 mb-2 shadow-lg backdrop-blur-md">
-                    <Clock class="w-5 h-5 text-amber-300 animate-spin shrink-0" />
-                    <span class="text-sm font-semibold text-amber-200">排队等待中 (前方 {{ genStore.queueInfo.waiting }} 人)</span>
-                  </div>
-                  <span class="text-xs text-gray-300">当前共享节点正忙，系统将自动按序调度执行</span>
-                </template>
-                <template v-else>
-                  <Loader2 class="w-8 h-8 animate-spin mb-3 text-blue-400" />
-                  <span class="text-sm font-medium animate-pulse">
-                    {{ genStore.batchTotal > 1 ? `正在生成第 ${genStore.batchCurrent}/${genStore.batchTotal} 张图像...` : '正在生成图像...' }}
-                  </span>
-                </template>
-              </div>
             </div>
 
             <!-- 待重绘标识 Tag -->
@@ -1893,7 +1872,7 @@ watch(
             </div>
           </template>
 
-          <!-- 空白状态 / 生成中状态 -->
+          <!-- 空白状态 / 生成中状态 (画布无任何图时展示) -->
           <div v-else class="text-gray-400 dark:text-gray-600 flex flex-col items-center justify-center gap-3">
             <template v-if="genStore.isGenerating && !genStore.streamPreviewUrl">
               <template v-if="genStore.queueInfo && genStore.queueInfo.waiting > 0">
@@ -1915,6 +1894,31 @@ watch(
             <template v-else>
               <ImageIcon class="w-16 h-16 opacity-40" />
               <p class="text-sm font-medium">在左侧输入提示词并生成，图像将在此呈现</p>
+            </template>
+          </div>
+
+          <!-- 画布浮动状态标签 (排队中 / 作画中 / 流式渲染中，纯轻量悬浮胶囊，位于缩放条下方，绝不遮挡画布与控制条) -->
+          <div 
+            v-if="genStore.isGenerating && (genStore.currentImage || genStore.streamPreviewUrl)"
+            class="absolute top-14 left-4 z-30 flex items-center gap-2 animate-fade-in pointer-events-none select-none"
+          >
+            <template v-if="genStore.queueInfo && genStore.queueInfo.waiting > 0">
+              <div class="px-3.5 py-1.5 rounded-full bg-amber-500/90 dark:bg-amber-600/90 text-white text-xs font-semibold shadow-lg backdrop-blur-md flex items-center gap-2 border border-amber-300/40">
+                <Clock class="w-3.5 h-3.5 text-amber-100 animate-spin shrink-0" />
+                <span>排队中 (前方 {{ genStore.queueInfo.waiting }} 人)...</span>
+              </div>
+            </template>
+            <template v-else-if="genStore.streamPreviewUrl">
+              <div class="px-3.5 py-1.5 rounded-full bg-blue-600/90 dark:bg-blue-500/90 text-white text-xs font-medium shadow-lg backdrop-blur-md flex items-center gap-2 border border-blue-300/40 animate-pulse">
+                <Loader2 class="w-3.5 h-3.5 text-blue-100 animate-spin shrink-0" />
+                <span>正在流式去噪渲染...</span>
+              </div>
+            </template>
+            <template v-else>
+              <div class="px-3.5 py-1.5 rounded-full bg-blue-600/90 dark:bg-blue-500/90 text-white text-xs font-medium shadow-lg backdrop-blur-md flex items-center gap-2 border border-blue-300/40 animate-pulse">
+                <Loader2 class="w-3.5 h-3.5 text-blue-100 animate-spin shrink-0" />
+                <span>{{ genStore.batchTotal > 1 ? `AI 正在作画 (${genStore.batchCurrent}/${genStore.batchTotal})...` : 'AI 正在作画中...' }}</span>
+              </div>
             </template>
           </div>
         </div>
