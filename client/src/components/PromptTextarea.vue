@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, nextTick } from 'vue';
+import { ref, nextTick, onMounted, onUnmounted } from 'vue';
 import { useAuthStore } from '../stores/auth';
 import { useGenerationStore } from '../stores/generation';
 import { encryptedAxios } from '../utils/api';
@@ -11,11 +11,17 @@ const props = withDefaults(defineProps<{
   rows?: number;
   textareaClass?: string;
   id?: string;
+  resizable?: boolean;
+  storageKey?: string;
+  minHeight?: number;
 }>(), {
   placeholder: '',
   rows: 3,
   textareaClass: '',
-  id: ''
+  id: '',
+  resizable: false,
+  storageKey: '',
+  minHeight: 60
 });
 
 const emit = defineEmits<{
@@ -257,6 +263,46 @@ const handleFocus = () => {
     fetchSuggestions(ctx.query);
   }
 };
+
+let resizeObserver: ResizeObserver | null = null;
+
+onMounted(() => {
+  if (props.resizable && textareaRef.value) {
+    const el = textareaRef.value;
+    if (props.minHeight) {
+      el.style.minHeight = `${props.minHeight}px`;
+    }
+
+    if (props.storageKey) {
+      const savedHeight = localStorage.getItem(`prompt_height_${props.storageKey}`);
+      if (savedHeight) {
+        const h = parseInt(savedHeight, 10);
+        if (!isNaN(h) && h >= (props.minHeight || 50)) {
+          el.style.height = `${h}px`;
+        }
+      }
+
+      if (window.ResizeObserver) {
+        resizeObserver = new ResizeObserver((entries) => {
+          for (const entry of entries) {
+            const currentHeight = (entry.target as HTMLElement).offsetHeight;
+            if (currentHeight && currentHeight >= (props.minHeight || 50)) {
+              localStorage.setItem(`prompt_height_${props.storageKey}`, String(currentHeight));
+            }
+          }
+        });
+        resizeObserver.observe(el);
+      }
+    }
+  }
+});
+
+onUnmounted(() => {
+  if (resizeObserver) {
+    resizeObserver.disconnect();
+    resizeObserver = null;
+  }
+});
 </script>
 
 <template>
@@ -272,7 +318,8 @@ const handleFocus = () => {
       :rows="rows" 
       :placeholder="placeholder"
       :class="[
-        'w-full bg-gray-50 dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-xl p-3 text-xs outline-none focus:ring-2 focus:ring-blue-500 resize-none font-mono custom-scrollbar transition-colors',
+        'w-full bg-gray-50 dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-xl p-3 text-xs outline-none focus:ring-2 focus:ring-blue-500 font-mono custom-scrollbar transition-colors',
+        resizable ? 'resize-y' : 'resize-none',
         textareaClass
       ]"
     ></textarea>

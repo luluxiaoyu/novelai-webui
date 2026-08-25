@@ -189,7 +189,6 @@ const closeModal = () => {
   <div 
     v-if="modelValue" 
     class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
-    @click.self="closeModal"
   >
     <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl w-full max-w-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
       <!-- 头部 -->

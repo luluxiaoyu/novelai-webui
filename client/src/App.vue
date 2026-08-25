@@ -10,14 +10,16 @@ import CustomSelect from './components/CustomSelect.vue';
 import CharacterLibraryModal from './components/CharacterLibraryModal.vue';
 import StyleLibraryModal from './components/StyleLibraryModal.vue';
 import PromptTextarea from './components/PromptTextarea.vue';
+import PromptEditorModal from './components/PromptEditorModal.vue';
 import { parsePngMetadata, type ParsedImageMetadata } from './utils/pngMetadata';
-import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Palette, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud, Cloud, Wifi, Sparkles, ChevronDown, ChevronUp, RotateCcw, FileText, Plus, Minus, Users, User, UserPlus, Clock } from 'lucide-vue-next';
+import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Palette, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud, Cloud, Wifi, Sparkles, ChevronDown, ChevronUp, RotateCcw, FileText, Plus, Minus, Users, User, UserPlus, Clock, Maximize2 } from 'lucide-vue-next';
 
 const authStore = useAuthStore();
 const genStore = useGenerationStore();
 const webdavStore = useWebDAVStore();
 const showCharacterLibrary = ref(false);
 const showStyleLibrary = ref(false);
+const showPromptEditor = ref(false);
 const connectionStatus = ref<{ type: 'success' | 'error', text: string } | null>(null);
 
 const handleTestConnection = async () => {
@@ -1215,6 +1217,14 @@ watch(
 
               <div class="flex items-center gap-2.5">
                 <button 
+                  @click="showPromptEditor = true" 
+                  class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 font-medium"
+                  title="大窗口专注编辑正向/负向/多角色提示词"
+                >
+                  <Maximize2 class="w-3.5 h-3.5" />
+                  展开编辑
+                </button>
+                <button 
                   @click="showStyleLibrary = true" 
                   class="text-xs text-pink-600 dark:text-pink-400 hover:underline flex items-center gap-1 font-medium"
                   title="打开常用画风预设库"
@@ -1243,6 +1253,9 @@ watch(
             <PromptTextarea 
               v-model="genStore.params.prompt" 
               :rows="3" 
+              :resizable="true"
+              storage-key="positive_prompt"
+              :min-height="80"
               placeholder="1girl, masterpiece, best quality, highly detailed, beautiful lighting..."
             />
           </div>
@@ -1261,6 +1274,9 @@ watch(
             <PromptTextarea 
               v-model="genStore.params.negative_prompt" 
               :rows="2" 
+              :resizable="true"
+              storage-key="negative_prompt"
+              :min-height="55"
               placeholder="lowres, bad anatomy, bad hands, text, error, missing fingers..."
               textarea-class="text-gray-500 dark:text-gray-400"
             />
@@ -2463,6 +2479,9 @@ watch(
 
     <!-- 画风预设库弹窗 -->
     <StyleLibraryModal v-model="showStyleLibrary" />
+
+    <!-- 提示词大屏工作台弹窗 -->
+    <PromptEditorModal v-model="showPromptEditor" />
 
     <!-- 页面拖拽悬浮提示遮罩 -->
     <div 
