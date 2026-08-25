@@ -634,15 +634,6 @@ const handleDroppedFile = async (file: File) => {
           targetHeight,
           metadata
         };
-        importMetaOptions.value = {
-          prompt: !!metadata.prompt,
-          uc: !!metadata.negative_prompt,
-          characters: !!(metadata.characters && metadata.characters.length > 0),
-          appendCharacters: false,
-          settings: false,
-          seed: false,
-          cleanImports: false
-        };
         showDropActionModal.value = true;
       };
       img.src = rawDataUrl;
@@ -653,7 +644,7 @@ const handleDroppedFile = async (file: File) => {
   }
 };
 
-const importMetaOptions = ref({
+const DEFAULT_IMPORT_OPTIONS = {
   prompt: true,
   uc: true,
   characters: true,
@@ -661,7 +652,26 @@ const importMetaOptions = ref({
   settings: false,
   seed: false,
   cleanImports: false
-});
+};
+
+const loadSavedImportOptions = () => {
+  try {
+    const saved = localStorage.getItem('import_meta_options');
+    if (saved) {
+      return { ...DEFAULT_IMPORT_OPTIONS, ...JSON.parse(saved) };
+    }
+  } catch {}
+  return { ...DEFAULT_IMPORT_OPTIONS };
+};
+
+const importMetaOptions = ref(loadSavedImportOptions());
+
+// 深度监听导入项选择并持久化到本地存储
+watch(importMetaOptions, (newVal) => {
+  try {
+    localStorage.setItem('import_meta_options', JSON.stringify(newVal));
+  } catch {}
+}, { deep: true });
 
 const cleanPromptString = (text: string) => {
   if (!text) return '';
