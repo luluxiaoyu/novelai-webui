@@ -1415,6 +1415,9 @@ watch(
                   <PromptTextarea 
                     v-model="char.prompt" 
                     :rows="2" 
+                    :resizable="true"
+                    storage-key="character_prompt"
+                    :min-height="55"
                     :placeholder="`角色 ${idx + 1} 特征 (如 1girl, nahida, dress, blonde hair, green eyes...)`"
                     textarea-class="p-2 border-gray-200 dark:border-gray-800 rounded-lg focus:ring-1"
                   />

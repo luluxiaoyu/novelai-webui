@@ -441,6 +441,9 @@ const handleCopy = async (text: string, type: string) => {
                 <PromptTextarea 
                   v-model="char.prompt" 
                   :rows="2" 
+                  :resizable="true"
+                  storage-key="modal_character_prompt"
+                  :min-height="55"
                   :placeholder="`角色 ${idx + 1} 外貌与动作特征 (如 1girl, nahida, green eyes, dress...)`"
                   textarea-class="bg-gray-50 dark:bg-gray-950 p-2 text-xs"
                 />
