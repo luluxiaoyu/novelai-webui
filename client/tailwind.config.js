@@ -49,6 +49,15 @@ export default {
           'Consolas',
           '"Cascadia Code"',
           '"Liberation Mono"',
+          // 显式添加中文字体回退，防止 Windows/Linux 在 mono 下回退到锯齿宋体
+          '"Microsoft YaHei UI"',
+          '"Microsoft YaHei"',
+          '"PingFang SC"',
+          '"Hiragino Sans GB"',
+          '"HarmonyOS Sans SC"',
+          'MiSans',
+          '"Noto Sans SC"',
+          '"Noto Sans CJK SC"',
           '"Courier New"',
           'monospace'
         ]
