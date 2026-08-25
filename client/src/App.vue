@@ -7,12 +7,14 @@ import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
 import { useDark, useToggle } from '@vueuse/core';
 import JSZip from 'jszip';
 import CustomSelect from './components/CustomSelect.vue';
+import CharacterLibraryModal from './components/CharacterLibraryModal.vue';
 import { parsePngMetadata, type ParsedImageMetadata } from './utils/pngMetadata';
 import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud, Cloud, Wifi, Sparkles, ChevronDown, ChevronUp, RotateCcw, FileText, Plus, Minus, Users, User, UserPlus } from 'lucide-vue-next';
 
 const authStore = useAuthStore();
 const genStore = useGenerationStore();
 const webdavStore = useWebDAVStore();
+const showCharacterLibrary = ref(false);
 const connectionStatus = ref<{ type: 'success' | 'error', text: string } | null>(null);
 
 const handleTestConnection = async () => {
@@ -74,6 +76,8 @@ const handleExportData = async () => {
     const metadata: any = {
       params: genStore.params,
       promptHistory: genStore.promptHistory,
+      savedPromptGroups: genStore.savedPromptGroups,
+      customCharacters: genStore.customCharacters,
       history: []
     };
 
@@ -145,6 +149,8 @@ const handleImportData = async (e: Event) => {
     if (importMode.value === 'overwrite') {
       if (parsed.params) Object.assign(genStore.params, parsed.params);
       if (parsed.promptHistory) genStore.promptHistory = parsed.promptHistory;
+      if (parsed.savedPromptGroups) genStore.savedPromptGroups = parsed.savedPromptGroups;
+      if (parsed.customCharacters) genStore.customCharacters = parsed.customCharacters;
       if (restoredHistory.length > 0) {
         genStore.history = restoredHistory;
         genStore.currentImage = restoredHistory[0];
@@ -156,6 +162,16 @@ const handleImportData = async (e: Event) => {
         const existingIds = new Set(genStore.promptHistory.map(p => p.id));
         const newPrompts = parsed.promptHistory.filter((p: any) => !existingIds.has(p.id));
         genStore.promptHistory = [...newPrompts, ...genStore.promptHistory];
+      }
+      if (parsed.savedPromptGroups) {
+        const existingGroups = new Set(genStore.savedPromptGroups || []);
+        (parsed.savedPromptGroups || []).forEach((g: string) => existingGroups.add(g));
+        genStore.savedPromptGroups = Array.from(existingGroups);
+      }
+      if (parsed.customCharacters) {
+        const existingCharIds = new Set((genStore.customCharacters || []).map(c => c.id));
+        const newChars = (parsed.customCharacters || []).filter((c: any) => !existingCharIds.has(c.id));
+        genStore.customCharacters = [...newChars, ...(genStore.customCharacters || [])];
       }
       if (restoredHistory.length > 0) {
         const existingIds = new Set(genStore.history.map(h => h.id));
@@ -1169,14 +1185,24 @@ watch(
           <div>
             <div class="flex justify-between items-center mb-1.5">
               <label class="block text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">正向提示词 (Prompt)</label>
-              <button 
-                @click="showPromptHistory = true" 
-                class="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 font-medium"
-                title="历史提示词"
-              >
-                <History class="w-3.5 h-3.5" />
-                历史 ({{ genStore.promptHistory.length }})
-              </button>
+              <div class="flex items-center gap-2.5">
+                <button 
+                  @click="showCharacterLibrary = true" 
+                  class="text-xs text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1 font-medium"
+                  title="打开常用角色预设库"
+                >
+                  <Users class="w-3.5 h-3.5" />
+                  角色库
+                </button>
+                <button 
+                  @click="showPromptHistory = true" 
+                  class="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 font-medium"
+                  title="历史提示词"
+                >
+                  <History class="w-3.5 h-3.5" />
+                  历史 ({{ genStore.promptHistory.length }})
+                </button>
+              </div>
             </div>
             <textarea 
               v-model="genStore.params.prompt" 
@@ -1217,6 +1243,16 @@ watch(
               </div>
 
               <div class="flex items-center gap-2 shrink-0">
+                <!-- 快捷打开角色库 -->
+                <button 
+                  @click="showCharacterLibrary = true" 
+                  class="text-xs bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 font-medium px-2 py-1 rounded-lg transition flex items-center gap-1 shrink-0 active:scale-95"
+                  title="从角色库选取或导入角色"
+                >
+                  <Users class="w-3.5 h-3.5 text-purple-500" />
+                  <span>角色库</span>
+                </button>
+
                 <!-- 空间位置定位 Toggle Switch -->
                 <div v-if="(genStore.params.characters?.length || 0) > 0" class="flex items-center gap-1.5">
                   <span class="text-[11px] text-gray-500 dark:text-gray-400 select-none font-medium">位置定位</span>
@@ -2338,6 +2374,9 @@ watch(
         </div>
       </div>
     </div>
+
+    <!-- 角色预设库弹窗 -->
+    <CharacterLibraryModal v-model="showCharacterLibrary" />
 
     <!-- 页面拖拽悬浮提示遮罩 -->
     <div 

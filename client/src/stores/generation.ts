@@ -138,6 +138,7 @@ export const useGenerationStore = defineStore('generation', () => {
   const history = ref<GeneratedImage[]>([]);
   const promptHistory = ref<Array<{ id: string; prompt: string; negative_prompt: string; timestamp: number; note?: string; isFavorite?: boolean; group?: string }>>([]);
   const savedPromptGroups = ref<string[]>([]);
+  const customCharacters = ref<Array<{ id: string; name: string; category: string; prompt: string; uc?: string; isBuiltin?: boolean; isFavorite?: boolean }>>([]);
   const isGenerating = ref(false);
   const streamPreviewUrl = ref<string | null>(null);
   const error = ref('');
@@ -694,6 +695,7 @@ export const useGenerationStore = defineStore('generation', () => {
     history, 
     promptHistory, 
     savedPromptGroups,
+    customCharacters,
     isGenerating,
     batchCount,
     batchTotal,
@@ -720,7 +722,7 @@ export const useGenerationStore = defineStore('generation', () => {
 }, {
   persist: [
     {
-      pick: ['params', 'promptHistory', 'savedPromptGroups'],
+      pick: ['params', 'promptHistory', 'savedPromptGroups', 'customCharacters'],
       storage: localStorage
     },
     {

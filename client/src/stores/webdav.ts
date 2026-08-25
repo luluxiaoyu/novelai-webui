@@ -163,6 +163,12 @@ export const useWebDAVStore = defineStore('webdav', () => {
       
       if (remoteMetadata) {
         genStore.promptHistory = remoteMetadata.promptHistory || [];
+        if (remoteMetadata.savedPromptGroups) {
+          genStore.savedPromptGroups = remoteMetadata.savedPromptGroups;
+        }
+        if (remoteMetadata.customCharacters) {
+          genStore.customCharacters = remoteMetadata.customCharacters;
+        }
         const remoteHistory = remoteMetadata.history || [];
         const localIds = new Set(genStore.history.map((h: any) => h.id));
         
@@ -244,6 +250,8 @@ export const useWebDAVStore = defineStore('webdav', () => {
       syncText.value = '正在更新索引数据...';
       const metaObj = {
         promptHistory: genStore.promptHistory,
+        savedPromptGroups: genStore.savedPromptGroups,
+        customCharacters: genStore.customCharacters,
         history: historyForMeta
       };
       
@@ -307,6 +315,8 @@ export const useWebDAVStore = defineStore('webdav', () => {
       }));
       const metaB64 = btoa(unescape(encodeURIComponent(JSON.stringify({
         promptHistory: genStore.promptHistory,
+        savedPromptGroups: genStore.savedPromptGroups,
+        customCharacters: genStore.customCharacters,
         history: historyForMeta
       }))));
       await executeAction('putFileContents', `${profilePath}/metadata.json`, metaB64);
