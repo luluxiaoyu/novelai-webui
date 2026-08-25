@@ -7,7 +7,7 @@
     "dev:client": "pnpm --filter client run dev",
     "dev": "concurrently \"pnpm dev:server\" \"pnpm dev:client\"",
     "build": "pnpm --filter client run build",
-    "start": "pnpm --filter server run dev"
+    "start": "pnpm --filter server run start"
   },
   "devDependencies": {
     "concurrently": "^10.0.5"
