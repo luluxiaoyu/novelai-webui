@@ -1,11 +1,25 @@
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 
-// Load environment variables from various possible paths
+// 多层级多路径自动扫描加载 .env 文件，兼容开发态 (ts) 与编译态 (dist/js) 以及任意运行目录 (根目录 / server 目录 / Docker / PM2)
+const possibleEnvPaths = [
+  path.resolve(process.cwd(), '.env'),
+  path.resolve(process.cwd(), 'server/.env'),
+  path.resolve(__dirname, '../../../.env'),
+  path.resolve(__dirname, '../../.env'),
+  path.resolve(__dirname, '../.env'),
+  path.resolve(__dirname, './.env')
+];
+
+for (const envPath of possibleEnvPaths) {
+  try {
+    if (fs.existsSync(envPath)) {
+      dotenv.config({ path: envPath, override: false });
+    }
+  } catch (e) {}
+}
 dotenv.config();
-dotenv.config({ path: path.resolve(process.cwd(), '.env') });
-dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 export interface AccessKeyConfig {
   key: string;

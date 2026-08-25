@@ -1,5 +1,7 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
+import fs from 'fs';
 import apiRoutes from './routes/api';
 import { getPort, isSiteAuthEnabled } from './utils/config';
 
@@ -14,12 +16,16 @@ app.use(encryptionMiddleware);
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-import path from 'path';
-import fs from 'fs';
-
 app.use('/api', apiRoutes);
 
-const clientDistPath = path.resolve(import.meta.dirname, '../../client/dist');
+// 多路径自动探测前端打包产物 (兼容源码执行、编译后 dist 执行、工作区根目录执行等)
+const possibleClientDistPaths = [
+  path.resolve(process.cwd(), 'client/dist'),
+  path.resolve(process.cwd(), 'dist'),
+  path.resolve(__dirname, '../../client/dist'),
+  path.resolve(__dirname, '../client/dist')
+];
+const clientDistPath = possibleClientDistPaths.find(p => fs.existsSync(p)) || path.resolve(__dirname, '../../client/dist');
 if (fs.existsSync(clientDistPath)) {
   app.use(express.static(clientDistPath));
   app.get(/^(?!\/api).+/, (req, res) => {
