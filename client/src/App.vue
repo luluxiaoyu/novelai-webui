@@ -600,7 +600,7 @@ const onWindowDrop = async (e: DragEvent) => {
 const handleDroppedFile = async (file: File) => {
   try {
     const arrayBuffer = await file.arrayBuffer();
-    const metadata = parsePngMetadata(arrayBuffer);
+    const metadata = await parsePngMetadata(arrayBuffer);
 
     const reader = new FileReader();
     reader.onload = () => {
