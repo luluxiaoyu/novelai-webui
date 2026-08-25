@@ -1030,11 +1030,11 @@ const copyImageToClipboard = async () => {
 };
 
 const fillOfficialUC = () => {
-  const officialUC = "nsfw, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page";
+  const officialUC = "lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, blurry, lowres, error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, multiple views, logo, too many watermarks, lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry, bad feet, username, {bad}, fewer, extra, watermark, unfinished,displeasing, chromatic aberration, signature, extra digits, artistic error, scan, [abstract],logo,{big belly},";
   if (!genStore.params.negative_prompt.trim()) {
     genStore.params.negative_prompt = officialUC;
   } else if (!genStore.params.negative_prompt.includes('chromatic aberration')) {
-    genStore.params.negative_prompt = `${officialUC}, ${genStore.params.negative_prompt}`;
+    genStore.params.negative_prompt = `${officialUC} ${genStore.params.negative_prompt}`;
   }
 };
 
