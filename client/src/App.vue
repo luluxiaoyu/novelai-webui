@@ -1584,24 +1584,24 @@ watch(
             <!-- 待重绘标识 Tag -->
             <div 
               v-if="genStore.params.image && genStore.currentImage.url.split(',')[1] === genStore.params.image"
-              class="absolute top-4 right-4 bg-blue-600/90 text-white text-xs px-3 py-1.5 rounded-full shadow-lg backdrop-blur-sm z-20 flex items-center gap-1.5 font-medium animate-fade-in"
+              class="absolute top-16 right-4 sm:top-auto sm:bottom-4 sm:right-44 bg-blue-600/90 text-white text-xs px-3 py-1.5 rounded-full shadow-lg backdrop-blur-sm z-20 flex items-center gap-1.5 font-medium animate-fade-in"
             >
               <Paintbrush class="w-3.5 h-3.5" />
               待重绘
             </div>
 
-            <!-- 浮动操作栏 (移动端避免被底部胶囊导航遮挡，设置 bottom-24) -->
-            <div class="absolute bottom-24 sm:bottom-4 right-4 flex items-center gap-2 z-30">
-              <button @click="downloadImage" class="bg-white/95 hover:bg-blue-50 dark:bg-gray-900/95 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 p-2.5 rounded-xl shadow-xl transition backdrop-blur-md" title="下载原图">
-                <Download class="w-5 h-5" />
+            <!-- 浮动操作栏 (移动端放置在右上角 top-4 right-4，彻底解决与底部导航挤压冲突；PC端保留在右下角) -->
+            <div class="absolute top-4 right-4 sm:top-auto sm:bottom-4 sm:right-4 flex items-center gap-1.5 sm:gap-2 z-30">
+              <button @click="downloadImage" class="bg-white/95 hover:bg-blue-50 dark:bg-gray-900/95 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 p-2 sm:p-2.5 rounded-xl shadow-lg transition backdrop-blur-md" title="下载原图">
+                <Download class="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
-              <button @click="copyImageToClipboard" class="bg-white/95 hover:bg-blue-50 dark:bg-gray-900/95 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 p-2.5 rounded-xl shadow-xl transition backdrop-blur-md" title="复制图像到剪贴板">
-                <Check v-if="imageCopied" class="w-5 h-5 text-green-500" />
-                <Copy v-else class="w-5 h-5" />
+              <button @click="copyImageToClipboard" class="bg-white/95 hover:bg-blue-50 dark:bg-gray-900/95 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 p-2 sm:p-2.5 rounded-xl shadow-lg transition backdrop-blur-md" title="复制图像到剪贴板">
+                <Check v-if="imageCopied" class="w-4 h-4 sm:w-5 sm:h-5 text-green-500" />
+                <Copy v-else class="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
-              <button @click="handleUseParams" class="bg-white/95 hover:bg-blue-50 dark:bg-gray-900/95 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 p-2.5 rounded-xl shadow-xl transition backdrop-blur-md" title="复用此图全部参数">
-                <Check v-if="paramsCopied" class="w-5 h-5 text-green-500" />
-                <SlidersHorizontal v-else class="w-5 h-5" />
+              <button @click="handleUseParams" class="bg-white/95 hover:bg-blue-50 dark:bg-gray-900/95 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 p-2 sm:p-2.5 rounded-xl shadow-lg transition backdrop-blur-md" title="复用此图全部参数">
+                <Check v-if="paramsCopied" class="w-4 h-4 sm:w-5 sm:h-5 text-green-500" />
+                <SlidersHorizontal v-else class="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
             </div>
           </template>
@@ -1616,71 +1616,97 @@ watch(
       <!-- 右侧历史画廊 (内部独立滚动，移动端作为右侧抽屉) -->
       <aside 
         class="
-          w-[75vw] max-w-[240px] lg:max-w-none lg:w-56 flex-shrink-0 bg-white dark:bg-gray-900 
+          w-[85vw] max-w-xs lg:max-w-none lg:w-60 flex-shrink-0 bg-white dark:bg-gray-900 
           border-l lg:border lg:border-gray-200 dark:border-gray-800 lg:rounded-2xl 
-          p-3 flex flex-col gap-3 shadow-2xl lg:shadow-none
+          p-3.5 flex flex-col gap-3 shadow-2xl lg:shadow-none
           transition-transform duration-300 ease-in-out h-full
-          fixed inset-y-0 right-0 z-40 lg:static lg:transform-none lg:translate-x-0 pb-24 lg:pb-3
+          fixed inset-y-0 right-0 z-40 lg:static lg:transform-none lg:translate-x-0 pb-24 lg:pb-3.5
         "
         :class="mobileTab === 'history' ? 'translate-x-0' : 'translate-x-full'"
       >
-        <div class="flex justify-between items-center shrink-0">
-          <div class="flex items-center gap-2">
-            <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">历史 ({{ filteredHistory.length }})</h3>
+        <div class="flex justify-between items-center shrink-0 pb-1 border-b border-gray-100 dark:border-gray-800">
+          <div class="flex items-center gap-1.5">
+            <h3 class="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">历史 ({{ filteredHistory.length }})</h3>
             <CustomSelect v-model="historyFilter" :options="historyFilterOptions" variant="ghost" placement="left" />
           </div>
-          <button 
-            v-if="filteredHistory.length > 0"
-            @click="genStore.clearFilteredHistory(genStore.history.filter(i => !filteredHistory.map(f => f.id).includes(i.id)).map(i => i.id))" 
-            class="text-[11px] text-red-500 hover:underline flex items-center gap-1"
-            title="清空当前显示的记录"
-          >
-            <Trash2 class="w-3 h-3" />
-            清空
-          </button>
+          <div class="flex items-center gap-1">
+            <button 
+              v-if="filteredHistory.length > 0"
+              @click="genStore.clearFilteredHistory(genStore.history.filter(i => !filteredHistory.map(f => f.id).includes(i.id)).map(i => i.id))" 
+              class="text-[11px] text-red-500 hover:underline px-1.5 py-1 flex items-center gap-0.5"
+              title="清空当前显示的记录"
+            >
+              <Trash2 class="w-3 h-3" />
+              清空
+            </button>
+            <button 
+              @click="mobileTab = 'canvas'"
+              class="lg:hidden text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition ml-1"
+              title="关闭历史面板"
+            >
+              <X class="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         <div class="flex flex-col gap-3 overflow-y-auto overflow-x-hidden custom-scrollbar flex-1">
           <div 
             v-for="item in filteredHistory" 
             :key="item.id"
-            @mouseenter="item.isNew = false"
-            @click="item.isNew = false; genStore.currentImage = item; resetZoom(); mobileTab = 'canvas'"
-            class="group relative w-full h-auto max-h-56 shrink-0 rounded-lg overflow-hidden cursor-pointer border-2 transition-all bg-gray-50 dark:bg-gray-950 flex items-center justify-center"
-            :class="genStore.currentImage?.id === item.id ? 'border-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.3)]' : 'border-transparent hover:border-gray-300 dark:hover:border-gray-600'"
+            class="group relative w-full shrink-0 rounded-xl overflow-hidden border-2 transition-all bg-gray-50 dark:bg-gray-950 flex flex-col"
+            :class="genStore.currentImage?.id === item.id ? 'border-blue-500 shadow-[0_0_12px_rgba(59,130,246,0.35)]' : 'border-gray-200/80 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700'"
           >
-            <!-- 未读标签指示器 -->
-            <div v-if="item.isNew" class="absolute top-2 right-2 bg-blue-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-sm z-20 pointer-events-none tracking-widest border border-blue-400/50" style="text-indent: 0.1em;">新</div>
-            <img :src="item.url" class="w-full h-auto max-h-56 object-contain" />
+            <!-- 缩略图区域 (点击切换为当前大图并跳转画布) -->
+            <div 
+              @click="item.isNew = false; genStore.currentImage = item; resetZoom(); mobileTab = 'canvas'"
+              class="relative w-full h-44 sm:h-48 cursor-pointer flex items-center justify-center bg-gray-100/50 dark:bg-gray-900/50 overflow-hidden"
+              title="点击在画布中查看大图"
+            >
+              <!-- 未读标签指示器 -->
+              <div v-if="item.isNew" class="absolute top-2 right-2 bg-blue-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-sm z-20 pointer-events-none tracking-widest border border-blue-400/50" style="text-indent: 0.1em;">新</div>
+              
+              <!-- 尺寸信息标签 -->
+              <div class="absolute bottom-1.5 left-2 bg-black/60 text-white text-[9px] font-mono px-1.5 py-0.5 rounded backdrop-blur-sm pointer-events-none z-10">
+                {{ item.params.width }}x{{ item.params.height }}
+              </div>
+
+              <img :src="item.url" class="w-full h-full object-contain transition-transform duration-300 group-hover:scale-105" />
+            </div>
             
-            <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 p-1">
-              <button 
-                @click.stop="genStore.currentImage = item; genStore.sendToInpaint(item.url); showMaskEditor = true; initCanvas(); mobileTab = 'controls'" 
-                class="bg-white/90 hover:bg-blue-600 hover:text-white text-gray-800 p-1.5 rounded-md text-[10px] font-medium shadow transition"
-                title="发送到涂鸦重绘"
-              >
-                重绘
-              </button>
-              <button 
-                @click.stop="genStore.useParams(item); mobileTab = 'controls'" 
-                class="bg-white/90 hover:bg-blue-600 hover:text-white text-gray-800 p-1.5 rounded-md text-[10px] font-medium shadow transition"
-                title="复用此参数"
-              >
-                复用
-              </button>
+            <!-- 卡片底部独立操作栏 (常驻清晰可见，彻底告别盲点与误触) -->
+            <div class="flex items-center justify-between px-2.5 py-1.5 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 text-xs">
+              <div class="flex items-center gap-1">
+                <button 
+                  @click.stop="genStore.currentImage = item; genStore.sendToInpaint(item.url); showMaskEditor = true; initCanvas(); mobileTab = 'controls'" 
+                  class="text-gray-600 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 font-medium py-1 px-1.5 rounded hover:bg-blue-50 dark:hover:bg-blue-950/40 transition flex items-center gap-1 text-[11px]"
+                  title="发送到涂鸦重绘"
+                >
+                  <Paintbrush class="w-3 h-3 text-blue-500" />
+                  <span>重绘</span>
+                </button>
+                <button 
+                  @click.stop="genStore.useParams(item); mobileTab = 'controls'" 
+                  class="text-gray-600 hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-400 font-medium py-1 px-1.5 rounded hover:bg-purple-50 dark:hover:bg-purple-950/40 transition flex items-center gap-1 text-[11px]"
+                  title="复用此图参数"
+                >
+                  <SlidersHorizontal class="w-3 h-3 text-purple-500" />
+                  <span>复用</span>
+                </button>
+              </div>
+
               <button 
                 @click.stop="handleDeleteHistory(item.id)" 
-                class="p-1.5 rounded-md text-[10px] font-medium shadow transition flex items-center gap-0.5"
-                :class="deletingHistoryId === item.id ? 'bg-red-600 text-white animate-pulse font-bold' : 'bg-white/90 hover:bg-red-600 hover:text-white text-red-600'"
+                class="py-1 px-1.5 rounded transition flex items-center gap-0.5 text-[11px]"
+                :class="deletingHistoryId === item.id ? 'bg-red-600 text-white font-bold animate-pulse' : 'text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40'"
                 :title="deletingHistoryId === item.id ? '再次点击确认删除' : '删除'"
               >
-                <span v-if="deletingHistoryId === item.id">确认删除?</span>
-                <Trash2 v-else class="w-3 h-3" />
+                <Trash2 v-if="deletingHistoryId !== item.id" class="w-3 h-3" />
+                <span>{{ deletingHistoryId === item.id ? '确认删除?' : '' }}</span>
               </button>
             </div>
           </div>
 
-          <div v-if="genStore.history.length === 0" class="text-xs text-gray-400 dark:text-gray-600 text-center py-8">
+          <div v-if="genStore.history.length === 0" class="text-xs text-gray-400 dark:text-gray-600 text-center py-12">
             暂无历史记录
           </div>
         </div>
