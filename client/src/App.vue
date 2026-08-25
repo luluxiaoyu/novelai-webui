@@ -12,7 +12,7 @@ import StyleLibraryModal from './components/StyleLibraryModal.vue';
 import PromptTextarea from './components/PromptTextarea.vue';
 import PromptEditorModal from './components/PromptEditorModal.vue';
 import { parsePngMetadata, type ParsedImageMetadata } from './utils/pngMetadata';
-import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Palette, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud, Cloud, Wifi, Sparkles, ChevronDown, ChevronUp, RotateCcw, FileText, Plus, Minus, Users, User, UserPlus, Clock, Maximize2 } from 'lucide-vue-next';
+import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Palette, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud, Cloud, Wifi, Sparkles, ChevronDown, ChevronUp, RotateCcw, FileText, Plus, Minus, Users, User, UserPlus, Clock, Maximize2, HelpCircle } from 'lucide-vue-next';
 
 const authStore = useAuthStore();
 const genStore = useGenerationStore();
@@ -634,6 +634,15 @@ const handleDroppedFile = async (file: File) => {
           targetHeight,
           metadata
         };
+        importMetaOptions.value = {
+          prompt: !!metadata.prompt,
+          uc: !!metadata.negative_prompt,
+          characters: !!(metadata.characters && metadata.characters.length > 0),
+          appendCharacters: false,
+          settings: false,
+          seed: false,
+          cleanImports: false
+        };
         showDropActionModal.value = true;
       };
       img.src = rawDataUrl;
@@ -644,10 +653,97 @@ const handleDroppedFile = async (file: File) => {
   }
 };
 
+const importMetaOptions = ref({
+  prompt: true,
+  uc: true,
+  characters: true,
+  appendCharacters: false,
+  settings: false,
+  seed: false,
+  cleanImports: false
+});
+
+const cleanPromptString = (text: string) => {
+  if (!text) return '';
+  return text
+    .replace(/\s+/g, ' ')
+    .replace(/,\s*,+/g, ', ')
+    .replace(/,\s*$/g, '')
+    .replace(/^\s*,/g, '')
+    .trim();
+};
+
+const handleImportSelectedMetadata = () => {
+  if (!droppedImageInfo.value) return;
+  const { metadata } = droppedImageInfo.value;
+
+  // 1. Prompt
+  if (importMetaOptions.value.prompt && metadata.prompt) {
+    let p = metadata.prompt;
+    if (importMetaOptions.value.cleanImports) p = cleanPromptString(p);
+    genStore.params.prompt = p;
+  }
+
+  // 2. UC (Undesired Content)
+  if (importMetaOptions.value.uc && metadata.negative_prompt) {
+    let uc = metadata.negative_prompt;
+    if (importMetaOptions.value.cleanImports) uc = cleanPromptString(uc);
+    genStore.params.negative_prompt = uc;
+  }
+
+  // 3. Characters
+  if (importMetaOptions.value.characters && metadata.characters && metadata.characters.length > 0) {
+    const importedChars = JSON.parse(JSON.stringify(metadata.characters)).map((c: any) => {
+      if (importMetaOptions.value.cleanImports) {
+        if (c.prompt) c.prompt = cleanPromptString(c.prompt);
+        if (c.uc) c.uc = cleanPromptString(c.uc);
+      }
+      return {
+        ...c,
+        id: `char-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+      };
+    });
+
+    if (importMetaOptions.value.appendCharacters) {
+      if (!genStore.params.characters) genStore.params.characters = [];
+      genStore.params.characters.push(...importedChars);
+    } else {
+      // 默认覆盖模式
+      genStore.params.characters = importedChars;
+    }
+
+    if (metadata.use_coords !== undefined) {
+      genStore.params.use_coords = metadata.use_coords;
+    }
+  }
+
+  // 4. Settings
+  if (importMetaOptions.value.settings) {
+    if (metadata.width) genStore.params.width = metadata.width;
+    if (metadata.height) genStore.params.height = metadata.height;
+    if (metadata.steps) genStore.params.steps = metadata.steps;
+    if (metadata.scale) genStore.params.scale = metadata.scale;
+    if (metadata.sampler) genStore.params.sampler = metadata.sampler;
+    if (metadata.model) genStore.params.model = metadata.model;
+    if (metadata.noise_schedule) genStore.params.noise_schedule = metadata.noise_schedule;
+    if (metadata.cfg_rescale !== undefined) genStore.params.cfg_rescale = metadata.cfg_rescale;
+    if (metadata.uncond_scale !== undefined) genStore.params.uncond_scale = metadata.uncond_scale;
+    if (metadata.skip_cfg_above_sigma !== undefined) genStore.params.skip_cfg_above_sigma = metadata.skip_cfg_above_sigma;
+  }
+
+  // 5. Seed
+  if (importMetaOptions.value.seed && metadata.seed !== undefined) {
+    genStore.params.seed = metadata.seed;
+  }
+
+  showDropActionModal.value = false;
+  droppedImageInfo.value = null;
+};
+
 const applyDropAction = (action: 'inpaint' | 'img2img' | 'metadata') => {
   if (!droppedImageInfo.value) return;
 
-  const { processedDataUrl, processedBase64, targetWidth, targetHeight, metadata } = droppedImageInfo.value;
+  const { processedDataUrl, processedBase64, targetWidth, targetHeight } = droppedImageInfo.value;
 
   if (action === 'inpaint') {
     genStore.params.image = processedBase64;
@@ -663,6 +759,8 @@ const applyDropAction = (action: 'inpaint' | 'img2img' | 'metadata') => {
     showMaskEditor.value = true;
     initCanvas();
     mobileTab.value = 'canvas';
+    showDropActionModal.value = false;
+    droppedImageInfo.value = null;
   } else if (action === 'img2img') {
     genStore.params.image = processedBase64;
     genStore.params.mask = undefined;
@@ -675,30 +773,11 @@ const applyDropAction = (action: 'inpaint' | 'img2img' | 'metadata') => {
       timestamp: Date.now()
     };
     showMaskEditor.value = false;
+    showDropActionModal.value = false;
+    droppedImageInfo.value = null;
   } else if (action === 'metadata') {
-    if (metadata.prompt) genStore.params.prompt = metadata.prompt;
-    if (metadata.negative_prompt) genStore.params.negative_prompt = metadata.negative_prompt;
-    if (metadata.width) genStore.params.width = metadata.width;
-    if (metadata.height) genStore.params.height = metadata.height;
-    if (metadata.steps) genStore.params.steps = metadata.steps;
-    if (metadata.scale) genStore.params.scale = metadata.scale;
-    if (metadata.seed !== undefined) genStore.params.seed = metadata.seed;
-    if (metadata.sampler) genStore.params.sampler = metadata.sampler;
-    if (metadata.model) genStore.params.model = metadata.model;
-    if (metadata.noise_schedule) genStore.params.noise_schedule = metadata.noise_schedule;
-    if (metadata.cfg_rescale !== undefined) genStore.params.cfg_rescale = metadata.cfg_rescale;
-    if (metadata.uncond_scale !== undefined) genStore.params.uncond_scale = metadata.uncond_scale;
-    if (metadata.skip_cfg_above_sigma !== undefined) genStore.params.skip_cfg_above_sigma = metadata.skip_cfg_above_sigma;
-    if (metadata.characters) {
-      genStore.params.characters = JSON.parse(JSON.stringify(metadata.characters));
-    }
-    if (metadata.use_coords !== undefined) {
-      genStore.params.use_coords = metadata.use_coords;
-    }
+    handleImportSelectedMetadata();
   }
-
-  showDropActionModal.value = false;
-  droppedImageInfo.value = null;
 };
 
 const handleImageUpload = (e: Event) => {
@@ -2445,9 +2524,9 @@ watch(
         </div>
 
         <!-- 图片预览与信息 -->
-        <div class="p-5 flex flex-col gap-4">
+        <div class="p-5 flex flex-col gap-4 max-h-[80vh] overflow-y-auto custom-scrollbar">
           <div class="flex gap-4 p-3 bg-gray-50 dark:bg-gray-950/60 rounded-xl border border-gray-200/60 dark:border-gray-800">
-            <div class="w-20 h-20 rounded-lg overflow-hidden bg-black/10 shrink-0 border border-gray-200 dark:border-gray-700 flex items-center justify-center">
+            <div class="w-16 h-16 sm:w-20 sm:h-20 rounded-lg overflow-hidden bg-black/10 shrink-0 border border-gray-200 dark:border-gray-700 flex items-center justify-center">
               <img :src="droppedImageInfo.dataUrl" class="w-full h-full object-contain" />
             </div>
             <div class="flex-1 flex flex-col justify-center gap-1 text-xs">
@@ -2457,9 +2536,9 @@ watch(
               <span class="text-gray-500 dark:text-gray-400">
                 分辨率: {{ droppedImageInfo.targetWidth }} × {{ droppedImageInfo.targetHeight }}
               </span>
-              <div v-if="droppedImageInfo.metadata.hasMetadata" class="flex items-center gap-1 text-green-600 dark:text-green-400 text-[11px] font-medium mt-0.5">
+              <div v-if="droppedImageInfo.metadata.hasMetadata" class="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 text-[11px] font-medium mt-0.5">
                 <Check class="w-3.5 h-3.5" />
-                <span>已识别到 NovelAI 提示词/参数元数据</span>
+                <span>已识别到元数据</span>
               </div>
               <div v-else class="text-amber-500 dark:text-amber-400 text-[11px] mt-0.5">
                 未检测到元数据 (可直接作为底图重绘/生图)
@@ -2467,62 +2546,201 @@ watch(
             </div>
           </div>
 
-          <p class="text-xs text-gray-500 dark:text-gray-400">请选择您希望对该图片进行的操作：</p>
+          <!-- 元数据选择导入区 -->
+          <div v-if="droppedImageInfo.metadata.hasMetadata" class="p-4 rounded-xl bg-blue-50/60 dark:bg-gray-950 border border-blue-100 dark:border-gray-800 flex flex-col gap-3 shadow-sm">
+            <div>
+              <h4 class="text-sm font-bold text-gray-900 dark:text-white tracking-wide flex items-center gap-1.5">
+                <Sparkles class="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                检测到图片包含生成元数据！
+              </h4>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">您可以按需勾选希望导入的提示词或设置：</p>
+            </div>
 
-          <!-- 三个选项卡片 -->
-          <div class="grid grid-cols-1 gap-2.5">
-            <!-- 选项1：局部重绘 -->
-            <button 
-              @click="applyDropAction('inpaint')" 
-              class="w-full p-3.5 rounded-xl border border-gray-200 dark:border-gray-800 hover:border-purple-500 dark:hover:border-purple-500 bg-white dark:bg-gray-900 hover:bg-purple-50/40 dark:hover:bg-purple-950/20 text-left transition flex items-start gap-3 group"
-            >
-              <div class="p-2 bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 rounded-xl group-hover:scale-105 transition shrink-0">
-                <Paintbrush class="w-4 h-4" />
-              </div>
-              <div class="flex-1">
-                <div class="font-semibold text-xs text-gray-900 dark:text-gray-100 group-hover:text-purple-600 dark:group-hover:text-purple-400 flex items-center justify-between">
-                  <span>🎨 载入为局部重绘 (Inpainting)</span>
-                  <span class="text-[10px] text-purple-600 dark:text-purple-400 font-normal">进入涂抹画板</span>
-                </div>
-                <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">载入为此图片的重绘底图，并直接打开遮罩涂抹编辑器</p>
-              </div>
-            </button>
+            <div class="flex flex-col sm:flex-row gap-4 items-start justify-between pt-1">
+              <!-- 左侧多选栏 -->
+              <div class="flex flex-col gap-2.5 w-full sm:w-auto">
+                <!-- 正向提示词 -->
+                <button 
+                  type="button"
+                  @click="importMetaOptions.prompt = !importMetaOptions.prompt"
+                  class="flex items-center gap-2 text-xs transition cursor-pointer select-none text-left"
+                >
+                  <div 
+                    class="w-5 h-5 rounded-md flex items-center justify-center transition border"
+                    :class="importMetaOptions.prompt ? 'bg-blue-600 dark:bg-blue-500 border-blue-600 dark:border-blue-500 text-white font-bold shadow-sm' : 'bg-white dark:bg-gray-800 text-gray-300 dark:text-gray-600 border-gray-300 dark:border-gray-700'"
+                  >
+                    <Check v-if="importMetaOptions.prompt" class="w-3.5 h-3.5 stroke-[3]" />
+                    <X v-else class="w-3.5 h-3.5" />
+                  </div>
+                  <span :class="importMetaOptions.prompt ? 'text-gray-900 dark:text-white font-medium' : 'text-gray-500 dark:text-gray-400'">
+                    正向提示词 (Prompt)
+                  </span>
+                </button>
 
-            <!-- 选项2：图生图 -->
-            <button 
-              @click="applyDropAction('img2img')" 
-              class="w-full p-3.5 rounded-xl border border-gray-200 dark:border-gray-800 hover:border-blue-500 dark:hover:border-blue-500 bg-white dark:bg-gray-900 hover:bg-blue-50/40 dark:hover:bg-blue-950/20 text-left transition flex items-start gap-3 group"
-            >
-              <div class="p-2 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 rounded-xl group-hover:scale-105 transition shrink-0">
-                <Layers class="w-4 h-4" />
-              </div>
-              <div class="flex-1">
-                <div class="font-semibold text-xs text-gray-900 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 flex items-center justify-between">
-                  <span>🖼️ 载入为图生图 (Image to Image)</span>
-                  <span class="text-[10px] text-blue-600 dark:text-blue-400 font-normal">垫图生成</span>
-                </div>
-                <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">作为垫图底图，可通过强度和噪点控制新图与原图的相似程度</p>
-              </div>
-            </button>
+                <!-- 负向提示词 -->
+                <button 
+                  type="button"
+                  @click="importMetaOptions.uc = !importMetaOptions.uc"
+                  class="flex items-center gap-2 text-xs transition cursor-pointer select-none text-left"
+                >
+                  <div 
+                    class="w-5 h-5 rounded-md flex items-center justify-center transition border"
+                    :class="importMetaOptions.uc ? 'bg-blue-600 dark:bg-blue-500 border-blue-600 dark:border-blue-500 text-white font-bold shadow-sm' : 'bg-white dark:bg-gray-800 text-gray-300 dark:text-gray-600 border-gray-300 dark:border-gray-700'"
+                  >
+                    <Check v-if="importMetaOptions.uc" class="w-3.5 h-3.5 stroke-[3]" />
+                    <X v-else class="w-3.5 h-3.5" />
+                  </div>
+                  <span :class="importMetaOptions.uc ? 'text-gray-900 dark:text-white font-medium' : 'text-gray-500 dark:text-gray-400'">
+                    负向提示词 (Undesired Content)
+                  </span>
+                </button>
 
-            <!-- 选项3：识别元数据并填入参数 -->
-            <button 
-              @click="applyDropAction('metadata')" 
-              :disabled="!droppedImageInfo.metadata.hasMetadata"
-              class="w-full p-3.5 rounded-xl border border-gray-200 dark:border-gray-800 hover:border-emerald-500 dark:hover:border-emerald-500 bg-white dark:bg-gray-900 hover:bg-emerald-50/40 dark:hover:bg-emerald-950/20 text-left transition flex items-start gap-3 group disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-gray-200 dark:disabled:hover:border-gray-800 disabled:hover:bg-transparent"
-            >
-              <div class="p-2 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 rounded-xl group-hover:scale-105 transition shrink-0">
-                <FileText class="w-4 h-4" />
-              </div>
-              <div class="flex-1">
-                <div class="font-semibold text-xs text-gray-900 dark:text-gray-100 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 flex items-center justify-between">
-                  <span>📋 提取元数据并填入参数</span>
-                  <span v-if="droppedImageInfo.metadata.hasMetadata" class="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">一键填入</span>
-                  <span v-else class="text-[10px] text-gray-400 font-normal">无元数据</span>
+                <!-- 角色设定 -->
+                <div class="flex flex-col gap-1.5">
+                  <button 
+                    type="button"
+                    @click="importMetaOptions.characters = !importMetaOptions.characters"
+                    class="flex items-center gap-2 text-xs transition cursor-pointer select-none text-left"
+                  >
+                    <div 
+                      class="w-5 h-5 rounded-md flex items-center justify-center transition border"
+                      :class="importMetaOptions.characters ? 'bg-blue-600 dark:bg-blue-500 border-blue-600 dark:border-blue-500 text-white font-bold shadow-sm' : 'bg-white dark:bg-gray-800 text-gray-300 dark:text-gray-600 border-gray-300 dark:border-gray-700'"
+                    >
+                      <Check v-if="importMetaOptions.characters" class="w-3.5 h-3.5 stroke-[3]" />
+                      <X v-else class="w-3.5 h-3.5" />
+                    </div>
+                    <span :class="importMetaOptions.characters ? 'text-gray-900 dark:text-white font-medium' : 'text-gray-500 dark:text-gray-400'">
+                      多角色独立设定 (Characters{{ droppedImageInfo.metadata.characters?.length ? ` × ${droppedImageInfo.metadata.characters.length}` : '' }})
+                    </span>
+                  </button>
+
+                  <!-- Append 子选项 (角色追加/覆盖) -->
+                  <div v-if="importMetaOptions.characters" class="pl-6 flex items-center gap-2">
+                    <button 
+                      type="button"
+                      @click="importMetaOptions.appendCharacters = !importMetaOptions.appendCharacters"
+                      class="flex items-center gap-2 text-xs transition cursor-pointer select-none text-left"
+                    >
+                      <div 
+                        class="w-4 h-4 rounded flex items-center justify-center transition border"
+                        :class="importMetaOptions.appendCharacters ? 'bg-purple-600 text-white border-purple-600 font-bold' : 'bg-white dark:bg-gray-800 text-gray-300 dark:text-gray-600 border-gray-300 dark:border-gray-700'"
+                      >
+                        <Check v-if="importMetaOptions.appendCharacters" class="w-3 h-3 stroke-[3]" />
+                        <X v-else class="w-3 h-3" />
+                      </div>
+                      <span class="text-[11px]" :class="importMetaOptions.appendCharacters ? 'text-purple-600 dark:text-purple-400 font-medium' : 'text-gray-500 dark:text-gray-400'">
+                        追加到已有角色 (默认不勾选为直接覆盖)
+                      </span>
+                    </button>
+                  </div>
                 </div>
-                <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">读取图中的 Prompt、UC、步数、CFG、尺寸、采样器并填入表单</p>
+
+                <!-- 生成参数 -->
+                <button 
+                  type="button"
+                  @click="importMetaOptions.settings = !importMetaOptions.settings"
+                  class="flex items-center gap-2 text-xs transition cursor-pointer select-none text-left"
+                >
+                  <div 
+                    class="w-5 h-5 rounded-md flex items-center justify-center transition border"
+                    :class="importMetaOptions.settings ? 'bg-blue-600 dark:bg-blue-500 border-blue-600 dark:border-blue-500 text-white font-bold shadow-sm' : 'bg-white dark:bg-gray-800 text-gray-300 dark:text-gray-600 border-gray-300 dark:border-gray-700'"
+                  >
+                    <Check v-if="importMetaOptions.settings" class="w-3.5 h-3.5 stroke-[3]" />
+                    <X v-else class="w-3.5 h-3.5" />
+                  </div>
+                  <span :class="importMetaOptions.settings ? 'text-gray-900 dark:text-white font-medium' : 'text-gray-500 dark:text-gray-400'">
+                    生成参数 (Settings：采样/步数/CFG/尺寸)
+                  </span>
+                </button>
+
+                <!-- 随机种子 -->
+                <button 
+                  type="button"
+                  @click="importMetaOptions.seed = !importMetaOptions.seed"
+                  class="flex items-center gap-2 text-xs transition cursor-pointer select-none text-left"
+                >
+                  <div 
+                    class="w-5 h-5 rounded-md flex items-center justify-center transition border"
+                    :class="importMetaOptions.seed ? 'bg-blue-600 dark:bg-blue-500 border-blue-600 dark:border-blue-500 text-white font-bold shadow-sm' : 'bg-white dark:bg-gray-800 text-gray-300 dark:text-gray-600 border-gray-300 dark:border-gray-700'"
+                  >
+                    <Check v-if="importMetaOptions.seed" class="w-3.5 h-3.5 stroke-[3]" />
+                    <X v-else class="w-3.5 h-3.5" />
+                  </div>
+                  <span :class="importMetaOptions.seed ? 'text-gray-900 dark:text-white font-medium' : 'text-gray-500 dark:text-gray-400'">
+                    随机种子 {{ droppedImageInfo.metadata.seed !== undefined ? `(${droppedImageInfo.metadata.seed})` : '' }}
+                  </span>
+                </button>
               </div>
-            </button>
+
+              <!-- 右侧操作与规范清理 -->
+              <div class="flex flex-col sm:items-end gap-3 w-full sm:w-auto shrink-0 justify-between self-stretch">
+                <button 
+                  @click="applyDropAction('metadata')" 
+                  class="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-semibold text-xs px-5 py-2.5 rounded-xl shadow-md transition flex items-center justify-center gap-2"
+                >
+                  <FileText class="w-4 h-4" />
+                  <span>导入所选元数据</span>
+                </button>
+
+                <!-- 规范清理冗余格式 -->
+                <button 
+                  type="button"
+                  @click="importMetaOptions.cleanImports = !importMetaOptions.cleanImports"
+                  class="flex items-center gap-1.5 text-xs transition cursor-pointer select-none self-start sm:self-end"
+                  title="自动去除多余空格与冗余标点逗号"
+                >
+                  <div 
+                    class="w-4 h-4 rounded flex items-center justify-center transition border"
+                    :class="importMetaOptions.cleanImports ? 'bg-blue-600 text-white border-blue-600 font-bold' : 'bg-white dark:bg-gray-800 text-gray-300 dark:text-gray-600 border-gray-300 dark:border-gray-700'"
+                  >
+                    <Check v-if="importMetaOptions.cleanImports" class="w-3 h-3 stroke-[3]" />
+                    <X v-else class="w-3 h-3" />
+                  </div>
+                  <span class="text-[11px]" :class="importMetaOptions.cleanImports ? 'text-gray-900 dark:text-white font-medium' : 'text-gray-500 dark:text-gray-400'">
+                    规范清理多余标点
+                  </span>
+                  <HelpCircle class="w-3 h-3 text-gray-400 opacity-80" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 底图工作流操作栏 -->
+          <div class="flex flex-col gap-2 pt-1 border-t border-gray-100 dark:border-gray-800">
+            <p class="text-xs text-gray-500 dark:text-gray-400 font-medium">其他图像操作：</p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <!-- 选项1：局部重绘 -->
+              <button 
+                @click="applyDropAction('inpaint')" 
+                class="p-3 rounded-xl border border-gray-200 dark:border-gray-800 hover:border-purple-500 dark:hover:border-purple-500 bg-white dark:bg-gray-900 hover:bg-purple-50/40 dark:hover:bg-purple-950/20 text-left transition flex items-start gap-2.5 group"
+              >
+                <div class="p-1.5 bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 rounded-lg group-hover:scale-105 transition shrink-0">
+                  <Paintbrush class="w-3.5 h-3.5" />
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="font-semibold text-xs text-gray-900 dark:text-gray-100 group-hover:text-purple-600 dark:group-hover:text-purple-400">
+                    🎨 载入为局部重绘
+                  </div>
+                  <p class="text-[10px] text-gray-400 mt-0.5">载入底图并进入遮罩涂抹</p>
+                </div>
+              </button>
+
+              <!-- 选项2：图生图 -->
+              <button 
+                @click="applyDropAction('img2img')" 
+                class="p-3 rounded-xl border border-gray-200 dark:border-gray-800 hover:border-blue-500 dark:hover:border-blue-500 bg-white dark:bg-gray-900 hover:bg-blue-50/40 dark:hover:bg-blue-950/20 text-left transition flex items-start gap-2.5 group"
+              >
+                <div class="p-1.5 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 rounded-lg group-hover:scale-105 transition shrink-0">
+                  <Layers class="w-3.5 h-3.5" />
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="font-semibold text-xs text-gray-900 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400">
+                    🖼️ 载入为图生图
+                  </div>
+                  <p class="text-[10px] text-gray-400 mt-0.5">作为底图进行垫图微调生成</p>
+                </div>
+              </button>
+            </div>
           </div>
         </div>
       </div>
