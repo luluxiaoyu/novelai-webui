@@ -1379,7 +1379,7 @@ watch(
                 class="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium flex items-center gap-1"
                 title="一键填入官方 Heavy UC 负向画质与色差抑制预设"
               >
-                + 官方画质预设
+                + 填入预设
               </button>
             </div>
             <PromptTextarea 
@@ -1391,6 +1391,20 @@ watch(
               placeholder="lowres, bad anatomy, bad hands, text, error, missing fingers..."
               textarea-class="text-gray-500 dark:text-gray-400"
             />
+            <!-- 简洁开关：自动追加官方画质预设 -->
+            <div class="flex items-center justify-between mt-1.5 px-0.5 cursor-pointer group" @click="genStore.params.auto_quality_presets = !genStore.params.auto_quality_presets" title="生图时在后台自动追加官方正向(, no text, best quality...)与负向(Heavy UC)画质增强预设">
+              <span class="text-xs text-gray-500 dark:text-gray-400 group-hover:text-gray-700 dark:group-hover:text-gray-300 transition-colors">自动追加官方画质预设 (正向 quality + 负向 UC)</span>
+              <button 
+                type="button"
+                class="relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors focus:outline-none"
+                :class="genStore.params.auto_quality_presets ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'"
+              >
+                <span 
+                  class="pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                  :class="genStore.params.auto_quality_presets ? 'translate-x-1.5' : '-translate-x-1.5'"
+                />
+              </button>
+            </div>
           </div>
 
           <!-- V4 / V4.5 / V5 多角色定位与专属提示词 (Character Prompts) -->
@@ -1695,6 +1709,23 @@ watch(
           </div>
 
           <div class="flex flex-col gap-2.5 pt-3 border-t border-gray-200 dark:border-gray-800">
+            <!-- 自动追加官方画质预设开关 -->
+            <div class="flex items-center justify-between cursor-pointer group" @click="genStore.params.auto_quality_presets = !genStore.params.auto_quality_presets" title="生图时在后台自动追加官方正向(, no text, best quality...)与负向(Heavy UC)画质增强预设，无需手动填入输入框，保持输入框纯净">
+              <div class="flex flex-col">
+                <span class="text-xs font-medium text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-gray-100 transition-colors">自动追加官方画质预设</span>
+                <span class="text-[10px] text-gray-400">后台追加 best quality 与官方 Heavy UC</span>
+              </div>
+              <button 
+                class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors focus:outline-none"
+                :class="genStore.params.auto_quality_presets ? 'bg-purple-600' : 'bg-gray-200 dark:bg-gray-700'"
+              >
+                <span 
+                  class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                  :class="genStore.params.auto_quality_presets ? 'translate-x-2' : '-translate-x-2'"
+                />
+              </button>
+            </div>
+
             <div class="flex items-center justify-between cursor-pointer group" @click="genStore.params.enable_stream = !genStore.params.enable_stream" title="允许服务器边画边给你传模糊过程图">
               <span class="text-xs font-medium text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-gray-100 transition-colors">流式生成 (实时预览)</span>
               <button 

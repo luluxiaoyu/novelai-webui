@@ -41,7 +41,11 @@ export interface GenerationParams {
   mask?: string;  // Base64
   strength?: number;
   noise?: number;
+  auto_quality_presets?: boolean;
 }
+
+export const OFFICIAL_V5_POS_PRESET = ', no text, best quality, very aesthetic, absurdres, very aesthetic, masterpiece, no text';
+export const OFFICIAL_V5_NEG_PRESET = 'lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, blurry, lowres, error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, multiple views, logo, too many watermarks, lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry, bad feet, username, {bad}, fewer, extra, watermark, unfinished,displeasing, chromatic aberration, signature, extra digits, artistic error, scan, [abstract],logo,{big belly},';
 
 export interface GeneratedImage {
   id: string;
@@ -187,7 +191,7 @@ export const useGenerationStore = defineStore('generation', () => {
     height: 1216,
     steps: 28,
     sampler: 'k_euler_ancestral',
-    scale: 5.5,
+    scale: 7.0,
     seed: -1,
     sm: false,
     sm_dyn: false,
@@ -196,12 +200,13 @@ export const useGenerationStore = defineStore('generation', () => {
     noise_schedule: 'karras',
     cfg_rescale: 0,
     uncond_scale: 0,
-    skip_cfg_above_sigma: 19.34,
+    skip_cfg_above_sigma: null,
     prefer_brownian: true,
     strength: 0.7,
     noise: 0.0,
     characters: [],
     use_coords: false,
+    auto_quality_presets: true,
   });
 
   const history = ref<GeneratedImage[]>([]);
@@ -330,6 +335,24 @@ export const useGenerationStore = defineStore('generation', () => {
         }
       }
 
+      // 自动追加官方画质预设（正向追加 best quality 等，负向追加官方 Heavy UC，不污染前端输入框）
+      let finalPrompt = (params.prompt || '').trim();
+      let finalNegPrompt = (params.negative_prompt || '').trim();
+
+      if (params.auto_quality_presets !== false) {
+        if (finalPrompt && !finalPrompt.includes('very aesthetic') && !finalPrompt.includes('absurdres')) {
+          finalPrompt = `${finalPrompt}${OFFICIAL_V5_POS_PRESET}`;
+        } else if (!finalPrompt) {
+          finalPrompt = OFFICIAL_V5_POS_PRESET.replace(/^,\s*/, '');
+        }
+
+        if (!finalNegPrompt.includes('chromatic aberration') && !finalNegPrompt.includes('artistic error')) {
+          finalNegPrompt = finalNegPrompt 
+            ? `${OFFICIAL_V5_NEG_PRESET} ${finalNegPrompt}`
+            : OFFICIAL_V5_NEG_PRESET;
+        }
+      }
+
       if (isV4OrV5) {
         parameters.use_coords = false;
         parameters.noise_schedule = params.noise_schedule || "karras";
@@ -354,10 +377,9 @@ export const useGenerationStore = defineStore('generation', () => {
         parameters.uncond_scale = params.uncond_scale ?? 0;
 
         // 同步底层 uc、negative_prompt 与 v4_negative_prompt
-        const negPrompt = params.negative_prompt || '';
-        parameters.uc = negPrompt;
-        parameters.negative_prompt = negPrompt;
-        parameters.tag_hint_uc_preset = negPrompt.length > 50 ? 2 : (negPrompt ? 1 : 0);
+        parameters.uc = finalNegPrompt;
+        parameters.negative_prompt = finalNegPrompt;
+        parameters.tag_hint_uc_preset = finalNegPrompt.length > 50 ? 2 : (finalNegPrompt ? 1 : 0);
         parameters.tag_hint_qt = 1;
         parameters.version = 1;
 
@@ -387,7 +409,7 @@ export const useGenerationStore = defineStore('generation', () => {
 
         parameters.v4_prompt = {
           caption: {
-            base_caption: params.prompt,
+            base_caption: finalPrompt,
             char_captions: charCaptions
           },
           use_coords: useCoords,
@@ -396,7 +418,7 @@ export const useGenerationStore = defineStore('generation', () => {
         };
         parameters.v4_negative_prompt = {
           caption: {
-            base_caption: negPrompt,
+            base_caption: finalNegPrompt,
             char_captions: charUcCaptions
           },
           use_coords: useCoords,
@@ -417,8 +439,8 @@ export const useGenerationStore = defineStore('generation', () => {
           parameters.qualityToggle = true;
         }
       } else {
-        parameters.negative_prompt = params.negative_prompt;
-        parameters.uc = params.negative_prompt || '';
+        parameters.negative_prompt = finalNegPrompt;
+        parameters.uc = finalNegPrompt;
         parameters.sm = params.sm;
         parameters.sm_dyn = params.sm_dyn;
         if (action === 'infill') {
@@ -427,7 +449,7 @@ export const useGenerationStore = defineStore('generation', () => {
       }
 
       const payload = {
-        input: params.prompt,
+        input: finalPrompt,
         model: modelToUse,
         action,
         parameters
@@ -870,12 +892,12 @@ export const useGenerationStore = defineStore('generation', () => {
   const resetAdvancedParams = () => {
     params.steps = 28;
     params.sampler = 'k_euler_ancestral';
-    params.scale = 5.5;
+    params.scale = 7.0;
     params.seed = -1;
     params.noise_schedule = 'karras';
     params.cfg_rescale = 0;
     params.uncond_scale = 0;
-    params.skip_cfg_above_sigma = 19.34;
+    params.skip_cfg_above_sigma = null;
     params.prefer_brownian = true;
     params.dynamic_thresholding = false;
     params.sm = false;
@@ -884,6 +906,7 @@ export const useGenerationStore = defineStore('generation', () => {
     params.noise = 0.0;
     params.characters = [];
     params.use_coords = false;
+    params.auto_quality_presets = true;
   };
 
   const clearHistory = () => {
