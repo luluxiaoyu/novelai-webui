@@ -2,7 +2,7 @@
 import { ref, computed } from 'vue';
 import { useGenerationStore } from '../stores/generation';
 import { useWebDAVStore } from '../stores/webdav';
-import { X, Search, Plus, Trash2, Copy, Check, UserPlus, Users, Star, Tag } from 'lucide-vue-next';
+import { X, Search, Plus, Trash2, Copy, Check, UserPlus, Users, Star, ArrowUpToLine, ArrowDownToLine } from 'lucide-vue-next';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -67,7 +67,7 @@ const BUILTIN_PRESETS: CharacterPreset[] = [
     id: 'hsr-bailu',
     name: '白露 (Bailu)',
     category: '崩铁',
-    prompt: 'bailu (honkai: starrail)',
+    prompt: 'bailu (honkai: star rail)',
     isBuiltin: true
   }
 ];
@@ -75,7 +75,7 @@ const BUILTIN_PRESETS: CharacterPreset[] = [
 const activeCategory = ref<string>('all');
 const searchQuery = ref<string>('');
 const copiedId = ref<string | null>(null);
-const appliedId = ref<string | null>(null);
+const appliedAction = ref<{ id: string; action: 'prepend' | 'append' | 'char' } | null>(null);
 
 // 新增/编辑弹窗状态
 const showEditModal = ref(false);
@@ -154,18 +154,31 @@ const handleCopy = async (preset: CharacterPreset) => {
   }
 };
 
-// 填入主正向提示词 (放最前面)
-const handleAppendToMainPrompt = (preset: CharacterPreset) => {
+// 追加到最前面
+const handlePrependPrompt = (preset: CharacterPreset) => {
   const current = genStore.params.prompt.trim();
   if (!current) {
     genStore.params.prompt = preset.prompt;
   } else if (!current.includes(preset.prompt)) {
-    // 放置在最前面
     genStore.params.prompt = `${preset.prompt}, ${current}`;
   }
-  appliedId.value = preset.id;
+  appliedAction.value = { id: preset.id, action: 'prepend' };
   setTimeout(() => {
-    if (appliedId.value === preset.id) appliedId.value = null;
+    if (appliedAction.value?.id === preset.id) appliedAction.value = null;
+  }, 1500);
+};
+
+// 追加到最后面
+const handleAppendPrompt = (preset: CharacterPreset) => {
+  const current = genStore.params.prompt.trim();
+  if (!current) {
+    genStore.params.prompt = preset.prompt;
+  } else if (!current.includes(preset.prompt)) {
+    genStore.params.prompt = `${current}, ${preset.prompt}`;
+  }
+  appliedAction.value = { id: preset.id, action: 'append' };
+  setTimeout(() => {
+    if (appliedAction.value?.id === preset.id) appliedAction.value = null;
   }, 1500);
 };
 
@@ -186,9 +199,9 @@ const handleAddToCharacterPrompts = (preset: CharacterPreset) => {
     enabled: true
   });
 
-  appliedId.value = preset.id;
+  appliedAction.value = { id: preset.id, action: 'char' };
   setTimeout(() => {
-    if (appliedId.value === preset.id) appliedId.value = null;
+    if (appliedAction.value?.id === preset.id) appliedAction.value = null;
   }, 1500);
 };
 
@@ -373,37 +386,53 @@ const openAddModal = () => {
             </div>
 
             <!-- 底部操作按钮栏 -->
-            <div class="flex items-center gap-1.5 pt-1">
-              <!-- 追加到主提示词 -->
-              <button 
-                @click="handleAppendToMainPrompt(preset)" 
-                class="flex-1 bg-white hover:bg-blue-50 dark:bg-gray-900 dark:hover:bg-blue-950/60 text-gray-700 hover:text-blue-600 dark:text-gray-300 dark:hover:text-blue-400 border border-gray-200 dark:border-gray-700 text-xs font-medium py-1.5 px-2 rounded-xl transition flex items-center justify-center gap-1 shadow-2xs"
-                title="追加到正向提示词末尾"
-              >
-                <Check v-if="appliedId === preset.id" class="w-3.5 h-3.5 text-green-500" />
-                <Tag v-else class="w-3.5 h-3.5 text-blue-500" />
-                <span>{{ appliedId === preset.id ? '已填入' : '填入主词' }}</span>
-              </button>
+            <div class="flex flex-col gap-1.5 pt-1">
+              <div class="grid grid-cols-2 gap-1.5">
+                <!-- 追加到最前 -->
+                <button 
+                  @click="handlePrependPrompt(preset)" 
+                  class="bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-[11px] font-medium py-1.5 px-2 rounded-xl transition flex items-center justify-center gap-1 active:scale-95 shadow-2xs"
+                  title="将角色 Tag 插入到正向提示词最前面"
+                >
+                  <Check v-if="appliedAction?.id === preset.id && appliedAction.action === 'prepend'" class="w-3.5 h-3.5 text-green-500" />
+                  <ArrowUpToLine v-else class="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                  <span>{{ appliedAction?.id === preset.id && appliedAction.action === 'prepend' ? '已前置' : '追加最前' }}</span>
+                </button>
 
-              <!-- 添加为独立角色 (Character Prompts) -->
-              <button 
-                @click="handleAddToCharacterPrompts(preset)" 
-                class="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium py-1.5 px-2 rounded-xl transition flex items-center justify-center gap-1 shadow-sm shadow-blue-500/20"
-                title="添加为 V4/V5 多角色专属卡片"
-              >
-                <UserPlus class="w-3.5 h-3.5" />
-                <span>+ 独立角色</span>
-              </button>
+                <!-- 追加到最后 -->
+                <button 
+                  @click="handleAppendPrompt(preset)" 
+                  class="bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 text-[11px] font-medium py-1.5 px-2 rounded-xl transition flex items-center justify-center gap-1 active:scale-95 shadow-2xs"
+                  title="将角色 Tag 追加到正向提示词最后面"
+                >
+                  <Check v-if="appliedAction?.id === preset.id && appliedAction.action === 'append'" class="w-3.5 h-3.5 text-green-500" />
+                  <ArrowDownToLine v-else class="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                  <span>{{ appliedAction?.id === preset.id && appliedAction.action === 'append' ? '已后置' : '追加最后' }}</span>
+                </button>
+              </div>
 
-              <!-- 复制按钮 -->
-              <button 
-                @click="handleCopy(preset)" 
-                class="p-1.5 bg-white hover:bg-gray-100 dark:bg-gray-900 dark:hover:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition shrink-0"
-                title="复制提示词"
-              >
-                <Check v-if="copiedId === preset.id" class="w-4 h-4 text-green-500" />
-                <Copy v-else class="w-4 h-4" />
-              </button>
+              <div class="flex items-center gap-1.5">
+                <!-- 添加为独立角色 (Character Prompts) -->
+                <button 
+                  @click="handleAddToCharacterPrompts(preset)" 
+                  class="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium py-1.5 px-2 rounded-xl transition flex items-center justify-center gap-1 shadow-sm shadow-blue-500/20 active:scale-95"
+                  title="添加为 V4/V5 多角色专属卡片"
+                >
+                  <Check v-if="appliedAction?.id === preset.id && appliedAction.action === 'char'" class="w-3.5 h-3.5 text-green-300" />
+                  <UserPlus v-else class="w-3.5 h-3.5" />
+                  <span>{{ appliedAction?.id === preset.id && appliedAction.action === 'char' ? '已添加角色' : '+ 独立角色' }}</span>
+                </button>
+
+                <!-- 复制按钮 -->
+                <button 
+                  @click="handleCopy(preset)" 
+                  class="p-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition shrink-0 active:scale-95"
+                  title="复制提示词"
+                >
+                  <Check v-if="copiedId === preset.id" class="w-4 h-4 text-green-500" />
+                  <Copy v-else class="w-4 h-4" />
+                </button>
+              </div>
             </div>
           </div>
         </div>

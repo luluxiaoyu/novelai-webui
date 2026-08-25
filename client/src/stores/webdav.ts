@@ -169,6 +169,9 @@ export const useWebDAVStore = defineStore('webdav', () => {
         if (remoteMetadata.customCharacters) {
           genStore.customCharacters = remoteMetadata.customCharacters;
         }
+        if (remoteMetadata.customStyles) {
+          genStore.customStyles = remoteMetadata.customStyles;
+        }
         const remoteHistory = remoteMetadata.history || [];
         const localIds = new Set(genStore.history.map((h: any) => h.id));
         
@@ -252,6 +255,7 @@ export const useWebDAVStore = defineStore('webdav', () => {
         promptHistory: genStore.promptHistory,
         savedPromptGroups: genStore.savedPromptGroups,
         customCharacters: genStore.customCharacters,
+        customStyles: genStore.customStyles,
         history: historyForMeta
       };
       
@@ -317,6 +321,7 @@ export const useWebDAVStore = defineStore('webdav', () => {
         promptHistory: genStore.promptHistory,
         savedPromptGroups: genStore.savedPromptGroups,
         customCharacters: genStore.customCharacters,
+        customStyles: genStore.customStyles,
         history: historyForMeta
       }))));
       await executeAction('putFileContents', `${profilePath}/metadata.json`, metaB64);

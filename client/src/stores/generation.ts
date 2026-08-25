@@ -219,6 +219,7 @@ export const useGenerationStore = defineStore('generation', () => {
   const promptHistory = ref<Array<{ id: string; prompt: string; negative_prompt: string; timestamp: number; note?: string; isFavorite?: boolean; group?: string }>>([]);
   const savedPromptGroups = ref<string[]>([]);
   const customCharacters = ref<Array<{ id: string; name: string; category: string; prompt: string; uc?: string; isBuiltin?: boolean; isFavorite?: boolean }>>([]);
+  const customStyles = ref<Array<{ id: string; name: string; category: string; prompt: string; uc?: string; isFavorite?: boolean }>>([]);
   const isGenerating = ref(false);
   const queueInfo = ref<{ waiting: number; active: number; isBusy: boolean } | null>(null);
   let queuePollTimer: any = null;
@@ -851,6 +852,7 @@ export const useGenerationStore = defineStore('generation', () => {
     promptHistory, 
     savedPromptGroups,
     customCharacters,
+    customStyles,
     isGenerating,
     queueInfo,
     batchCount,
@@ -878,7 +880,7 @@ export const useGenerationStore = defineStore('generation', () => {
 }, {
   persist: [
     {
-      pick: ['params', 'promptHistory', 'savedPromptGroups', 'customCharacters'],
+      pick: ['params', 'promptHistory', 'savedPromptGroups', 'customCharacters', 'customStyles'],
       storage: localStorage
     },
     {

@@ -8,13 +8,15 @@ import { useDark, useToggle } from '@vueuse/core';
 import JSZip from 'jszip';
 import CustomSelect from './components/CustomSelect.vue';
 import CharacterLibraryModal from './components/CharacterLibraryModal.vue';
+import StyleLibraryModal from './components/StyleLibraryModal.vue';
 import { parsePngMetadata, type ParsedImageMetadata } from './utils/pngMetadata';
-import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud, Cloud, Wifi, Sparkles, ChevronDown, ChevronUp, RotateCcw, FileText, Plus, Minus, Users, User, UserPlus, Clock } from 'lucide-vue-next';
+import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Palette, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud, Cloud, Wifi, Sparkles, ChevronDown, ChevronUp, RotateCcw, FileText, Plus, Minus, Users, User, UserPlus, Clock } from 'lucide-vue-next';
 
 const authStore = useAuthStore();
 const genStore = useGenerationStore();
 const webdavStore = useWebDAVStore();
 const showCharacterLibrary = ref(false);
+const showStyleLibrary = ref(false);
 const connectionStatus = ref<{ type: 'success' | 'error', text: string } | null>(null);
 
 const handleTestConnection = async () => {
@@ -78,6 +80,7 @@ const handleExportData = async () => {
       promptHistory: genStore.promptHistory,
       savedPromptGroups: genStore.savedPromptGroups,
       customCharacters: genStore.customCharacters,
+      customStyles: genStore.customStyles,
       history: []
     };
 
@@ -151,6 +154,7 @@ const handleImportData = async (e: Event) => {
       if (parsed.promptHistory) genStore.promptHistory = parsed.promptHistory;
       if (parsed.savedPromptGroups) genStore.savedPromptGroups = parsed.savedPromptGroups;
       if (parsed.customCharacters) genStore.customCharacters = parsed.customCharacters;
+      if (parsed.customStyles) genStore.customStyles = parsed.customStyles;
       if (restoredHistory.length > 0) {
         genStore.history = restoredHistory;
         genStore.currentImage = restoredHistory[0];
@@ -172,6 +176,11 @@ const handleImportData = async (e: Event) => {
         const existingCharIds = new Set((genStore.customCharacters || []).map(c => c.id));
         const newChars = (parsed.customCharacters || []).filter((c: any) => !existingCharIds.has(c.id));
         genStore.customCharacters = [...newChars, ...(genStore.customCharacters || [])];
+      }
+      if (parsed.customStyles) {
+        const existingStyleIds = new Set((genStore.customStyles || []).map(s => s.id));
+        const newStyles = (parsed.customStyles || []).filter((s: any) => !existingStyleIds.has(s.id));
+        genStore.customStyles = [...newStyles, ...(genStore.customStyles || [])];
       }
       if (restoredHistory.length > 0) {
         const existingIds = new Set(genStore.history.map(h => h.id));
@@ -1186,6 +1195,14 @@ watch(
             <div class="flex justify-between items-center mb-1.5">
               <label class="block text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">正向提示词 (Prompt)</label>
               <div class="flex items-center gap-2.5">
+                <button 
+                  @click="showStyleLibrary = true" 
+                  class="text-xs text-pink-600 dark:text-pink-400 hover:underline flex items-center gap-1 font-medium"
+                  title="打开常用画风预设库"
+                >
+                  <Palette class="w-3.5 h-3.5" />
+                  画风库
+                </button>
                 <button 
                   @click="showCharacterLibrary = true" 
                   class="text-xs text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1 font-medium"
@@ -2425,6 +2442,9 @@ watch(
 
     <!-- 角色预设库弹窗 -->
     <CharacterLibraryModal v-model="showCharacterLibrary" />
+
+    <!-- 画风预设库弹窗 -->
+    <StyleLibraryModal v-model="showStyleLibrary" />
 
     <!-- 页面拖拽悬浮提示遮罩 -->
     <div 
