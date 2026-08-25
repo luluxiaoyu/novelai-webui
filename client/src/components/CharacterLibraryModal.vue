@@ -31,35 +31,35 @@ const BUILTIN_PRESETS: CharacterPreset[] = [
     id: 'genshin-nahida',
     name: '纳西妲 (Nahida)',
     category: '原神',
-    prompt: 'nahida (genshin impact)',
+    prompt: 'nahida(genshin impact)',
     isBuiltin: true
   },
   {
     id: 'genshin-klee',
     name: '可莉 (Klee)',
     category: '原神',
-    prompt: 'klee (genshin impact)',
+    prompt: 'klee(genshin impact)',
     isBuiltin: true
   },
   {
     id: 'genshin-sigewinne',
     name: '希格雯 (Sigewinne)',
     category: '原神',
-    prompt: 'sigewinne (genshin impact)',
+    prompt: 'sigewinne(genshin impact)',
     isBuiltin: true
   },
   {
     id: 'genshin-sigewinne-luckin',
     name: '希格雯·瑞幸联名 (Sigewinne Luckin Coffee)',
     category: '原神',
-    prompt: 'sigewinne (luckin coffee) (genshin impact)',
+    prompt: 'sigewinne(luckin coffee)(genshin impact)',
     isBuiltin: true
   },
   {
     id: 'genshin-kachina',
     name: '卡齐娜 (Kachina)',
     category: '原神',
-    prompt: 'kachina (genshin impact)',
+    prompt: 'kachina(genshin impact)',
     isBuiltin: true
   },
   // 崩铁
@@ -67,7 +67,14 @@ const BUILTIN_PRESETS: CharacterPreset[] = [
     id: 'hsr-bailu',
     name: '白露 (Bailu)',
     category: '崩铁',
-    prompt: 'bailu (honkai: star rail)',
+    prompt: 'bailu(honkai: star rail)',
+    isBuiltin: true
+  },
+  {
+    id: 'hsr-huohuo',
+    name: '霍霍 (huohuo)',
+    category: '崩铁',
+    prompt: 'huohuo(honkai: star rail)',
     isBuiltin: true
   }
 ];
