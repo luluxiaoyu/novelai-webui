@@ -11,6 +11,7 @@ import CharacterLibraryModal from './components/CharacterLibraryModal.vue';
 import StyleLibraryModal from './components/StyleLibraryModal.vue';
 import PromptTextarea from './components/PromptTextarea.vue';
 import PromptEditorModal from './components/PromptEditorModal.vue';
+import ImageGalleryModal from './components/ImageGalleryModal.vue';
 import { parsePngMetadata, type ParsedImageMetadata } from './utils/pngMetadata';
 import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Palette, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud, Cloud, Wifi, Sparkles, ChevronDown, ChevronUp, RotateCcw, FileText, Plus, Minus, Users, User, UserPlus, Clock, Maximize2, HelpCircle } from 'lucide-vue-next';
 
@@ -20,7 +21,16 @@ const webdavStore = useWebDAVStore();
 const showCharacterLibrary = ref(false);
 const showStyleLibrary = ref(false);
 const showPromptEditor = ref(false);
+const showImageGallery = ref(false);
 const connectionStatus = ref<{ type: 'success' | 'error', text: string } | null>(null);
+
+const handleGalleryInpaint = (item: any) => {
+  genStore.currentImage = item;
+  genStore.sendToInpaint(item.url);
+  showMaskEditor.value = true;
+  initCanvas();
+  mobileTab.value = 'controls';
+};
 
 const handleTestConnection = async () => {
   connectionStatus.value = null;
@@ -1156,6 +1166,16 @@ watch(
             <Lock class="w-4 h-4" />
           </button>
         </template>
+        <!-- 大屏图库入口 -->
+        <button 
+          @click="showImageGallery = true" 
+          class="text-gray-600 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-1.5 text-xs font-medium border border-gray-200 dark:border-gray-700 shadow-sm"
+          title="打开全屏历史图库与打包管理"
+        >
+          <ImageIcon class="w-4 h-4 text-blue-500" />
+          <span class="hidden sm:inline">大屏图库</span>
+          <span v-if="genStore.history.length > 0" class="text-[10px] bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 px-1 py-0.2 rounded font-mono">{{ genStore.history.length }}</span>
+        </button>
         <button @click="showDataModal = true" class="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white p-1 transition" title="数据管理与备份">
           <Database class="w-4 h-4" />
         </button>
@@ -2118,6 +2138,14 @@ watch(
           <div class="flex items-center gap-1.5">
             <h3 class="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">历史 ({{ filteredHistory.length }})</h3>
             <CustomSelect v-model="historyFilter" :options="historyFilterOptions" variant="ghost" placement="left" />
+            <button 
+              @click="showImageGallery = true" 
+              class="text-[11px] text-blue-600 dark:text-blue-400 hover:underline font-medium flex items-center gap-0.5"
+              title="打开大屏历史图库"
+            >
+              <Maximize2 class="w-3 h-3" />
+              <span>大屏</span>
+            </button>
           </div>
           <div class="flex items-center gap-1">
             <button 
@@ -2825,6 +2853,12 @@ watch(
       @open-character-library="showCharacterLibrary = true"
       @open-style-library="showStyleLibrary = true"
       @open-prompt-history="showPromptHistory = true"
+    />
+
+    <!-- 全功能大屏历史图库弹窗 -->
+    <ImageGalleryModal 
+      v-model="showImageGallery" 
+      @send-inpaint="handleGalleryInpaint" 
     />
 
     <!-- 页面拖拽悬浮提示遮罩 -->
