@@ -2025,7 +2025,7 @@ watch(
     </main>
 
     <!-- 历史提示词弹窗 -->
-    <div v-if="showPromptHistory" class="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
+    <div v-if="showPromptHistory" class="fixed inset-0 z-[60] flex items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
       <div class="bg-white dark:bg-gray-900 w-full max-w-5xl rounded-2xl shadow-2xl flex flex-col md:flex-row max-h-[92vh] md:max-h-[85vh] h-[92vh] md:h-[85vh] overflow-hidden border border-gray-200 dark:border-gray-800">
         
         <!-- PC端左侧过滤器和搜索 (md:flex) -->
@@ -2485,7 +2485,12 @@ watch(
     <StyleLibraryModal v-model="showStyleLibrary" />
 
     <!-- 提示词大屏工作台弹窗 -->
-    <PromptEditorModal v-model="showPromptEditor" />
+    <PromptEditorModal 
+      v-model="showPromptEditor" 
+      @open-character-library="showCharacterLibrary = true"
+      @open-style-library="showStyleLibrary = true"
+      @open-prompt-history="showPromptHistory = true"
+    />
 
     <!-- 页面拖拽悬浮提示遮罩 -->
     <div 

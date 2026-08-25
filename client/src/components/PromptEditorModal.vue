@@ -5,7 +5,7 @@ import PromptTextarea from './PromptTextarea.vue';
 import { 
   X, Check, Maximize2, Sparkles, Trash2, Copy, 
   Wand2, RotateCcw, Users, User, UserPlus, SlidersHorizontal, 
-  ShieldAlert
+  ShieldAlert, Palette, History
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -14,6 +14,9 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void;
+  (e: 'open-character-library'): void;
+  (e: 'open-style-library'): void;
+  (e: 'open-prompt-history'): void;
 }>();
 
 const genStore = useGenerationStore();
@@ -46,6 +49,46 @@ watch(() => props.modelValue, (isOpen) => {
     initDraft();
   }
 }, { immediate: true });
+
+// 监听外部修改（如画风库/角色库/历史弹窗在子窗口插入词条时即时同步至草稿）
+watch(() => genStore.params.prompt, (newVal) => {
+  if (props.modelValue && newVal !== draftPrompt.value) {
+    draftPrompt.value = newVal;
+  }
+});
+watch(() => genStore.params.negative_prompt, (newVal) => {
+  if (props.modelValue && newVal !== draftNegativePrompt.value) {
+    draftNegativePrompt.value = newVal;
+  }
+});
+watch(() => genStore.params.characters, (newVal) => {
+  if (props.modelValue) {
+    draftCharacters.value = JSON.parse(JSON.stringify(newVal || []));
+  }
+}, { deep: true });
+
+// 打开画风库
+const openStyleLibrary = () => {
+  // 同步当前草稿到 store，以确保画风库在当前草稿基础上追加
+  genStore.params.prompt = draftPrompt.value;
+  genStore.params.negative_prompt = draftNegativePrompt.value;
+  genStore.params.characters = JSON.parse(JSON.stringify(draftCharacters.value));
+  emit('open-style-library');
+};
+
+// 打开角色库
+const openCharacterLibrary = () => {
+  // 同步当前草稿到 store，以确保角色库在当前草稿基础上追加/添加角色
+  genStore.params.prompt = draftPrompt.value;
+  genStore.params.negative_prompt = draftNegativePrompt.value;
+  genStore.params.characters = JSON.parse(JSON.stringify(draftCharacters.value));
+  emit('open-character-library');
+};
+
+// 打开历史提示词
+const openPromptHistory = () => {
+  emit('open-prompt-history');
+};
 
 // 关闭弹窗
 const closeModal = () => {
@@ -179,7 +222,37 @@ const handleCopy = async (text: string, type: string) => {
               </span>
             </div>
 
-            <div class="flex items-center gap-1.5">
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <!-- 快捷调用子库与历史 -->
+              <button 
+                @click="openStyleLibrary" 
+                class="text-xs text-pink-600 dark:text-pink-400 hover:bg-pink-50 dark:hover:bg-pink-950/60 bg-white dark:bg-gray-900 border border-pink-200 dark:border-pink-900/60 px-2.5 py-1 rounded-lg transition flex items-center gap-1 font-medium"
+                title="打开常用画风预设库"
+              >
+                <Palette class="w-3.5 h-3.5" />
+                <span>画风库</span>
+              </button>
+
+              <button 
+                @click="openCharacterLibrary" 
+                class="text-xs text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/60 bg-white dark:bg-gray-900 border border-purple-200 dark:border-purple-900/60 px-2.5 py-1 rounded-lg transition flex items-center gap-1 font-medium"
+                title="打开常用角色预设库"
+              >
+                <Users class="w-3.5 h-3.5" />
+                <span>角色库</span>
+              </button>
+
+              <button 
+                @click="openPromptHistory" 
+                class="text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/60 bg-white dark:bg-gray-900 border border-blue-200 dark:border-blue-900/60 px-2.5 py-1 rounded-lg transition flex items-center gap-1 font-medium"
+                title="历史提示词"
+              >
+                <History class="w-3.5 h-3.5" />
+                <span>历史 ({{ genStore.promptHistory.length }})</span>
+              </button>
+
+              <div class="w-px h-4 bg-gray-200 dark:bg-gray-800 mx-0.5 hidden sm:block"></div>
+
               <button 
                 @click="formatCleanPrompt"
                 class="text-xs text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 px-2 py-1 rounded-lg transition flex items-center gap-1"

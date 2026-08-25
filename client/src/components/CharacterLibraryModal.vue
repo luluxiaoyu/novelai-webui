@@ -263,7 +263,7 @@ const openAddModal = () => {
 </script>
 
 <template>
-  <div v-if="modelValue" class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
+  <div v-if="modelValue" class="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
     <div class="bg-white dark:bg-gray-900 w-full max-w-4xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh] h-[85vh] overflow-hidden border border-gray-200 dark:border-gray-800">
       
       <!-- 模态框头部 -->
