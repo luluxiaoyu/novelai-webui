@@ -459,41 +459,53 @@ const zoomOut = () => {
   imgScale.value = Math.max(0.2, Math.round((imgScale.value / 1.25) * 100) / 100);
 };
 
+let panRafId: number | null = null;
+
 const startPan = (e: MouseEvent) => {
   if (e.button !== 0) return;
   isPanning.value = true;
   panStart.value = { x: e.clientX - imgTranslate.value.x, y: e.clientY - imgTranslate.value.y };
+  window.addEventListener('mousemove', doPan);
+  window.addEventListener('mouseup', stopPan);
 };
 
 const doPan = (e: MouseEvent) => {
   if (!isPanning.value) return;
-  imgTranslate.value = {
-    x: e.clientX - panStart.value.x,
-    y: e.clientY - panStart.value.y
-  };
+  const targetX = e.clientX - panStart.value.x;
+  const targetY = e.clientY - panStart.value.y;
+  if (panRafId) cancelAnimationFrame(panRafId);
+  panRafId = requestAnimationFrame(() => {
+    imgTranslate.value = { x: targetX, y: targetY };
+  });
 };
 
 const stopPan = () => {
   isPanning.value = false;
+  if (panRafId) {
+    cancelAnimationFrame(panRafId);
+    panRafId = null;
+  }
+  window.removeEventListener('mousemove', doPan);
+  window.removeEventListener('mouseup', stopPan);
 };
 
 // 移动端多指触控缩放与单指平移
 let touchStartDistance = 0;
 let touchStartScale = 1;
-let isTouchPanning = false;
+const isTouchPanning = ref(false);
 
 const handleTouchStart = (e: TouchEvent) => {
   if (showMaskEditor.value && e.touches.length === 1) return;
 
   if (e.touches.length === 1) {
-    isTouchPanning = true;
+    isTouchPanning.value = true;
     const t = e.touches[0];
     panStart.value = {
       x: t.clientX - imgTranslate.value.x,
       y: t.clientY - imgTranslate.value.y
     };
   } else if (e.touches.length === 2) {
-    isTouchPanning = false;
+    isTouchPanning.value = false;
     const t1 = e.touches[0];
     const t2 = e.touches[1];
     touchStartDistance = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
@@ -504,12 +516,14 @@ const handleTouchStart = (e: TouchEvent) => {
 const handleTouchMove = (e: TouchEvent) => {
   if (showMaskEditor.value && e.touches.length === 1) return;
 
-  if (e.touches.length === 1 && isTouchPanning) {
+  if (e.touches.length === 1 && isTouchPanning.value) {
     const t = e.touches[0];
-    imgTranslate.value = {
-      x: t.clientX - panStart.value.x,
-      y: t.clientY - panStart.value.y
-    };
+    const targetX = t.clientX - panStart.value.x;
+    const targetY = t.clientY - panStart.value.y;
+    if (panRafId) cancelAnimationFrame(panRafId);
+    panRafId = requestAnimationFrame(() => {
+      imgTranslate.value = { x: targetX, y: targetY };
+    });
   } else if (e.touches.length === 2 && touchStartDistance > 0) {
     const t1 = e.touches[0];
     const t2 = e.touches[1];
@@ -522,7 +536,7 @@ const handleTouchMove = (e: TouchEvent) => {
 
 const handleTouchEnd = (e: TouchEvent) => {
   if (e.touches.length === 0) {
-    isTouchPanning = false;
+    isTouchPanning.value = false;
     touchStartDistance = 0;
   } else if (e.touches.length === 1) {
     touchStartDistance = 0;
@@ -531,7 +545,7 @@ const handleTouchEnd = (e: TouchEvent) => {
       x: t.clientX - imgTranslate.value.x,
       y: t.clientY - imgTranslate.value.y
     };
-    isTouchPanning = true;
+    isTouchPanning.value = true;
   }
 };
 
@@ -1921,7 +1935,10 @@ watch(
           <!-- 局部重绘 涂鸦模式 -->
           <template v-if="genStore.params.image && showMaskEditor">
             <div 
-              class="transition-transform duration-75 flex items-center justify-center max-w-full max-h-full relative shadow-2xl rounded-lg overflow-hidden border border-gray-300 dark:border-gray-700"
+              class="flex items-center justify-center max-w-full max-h-full relative shadow-2xl rounded-lg overflow-hidden border border-gray-300 dark:border-gray-700"
+              :class="[
+                (isPanning || isTouchPanning) ? 'transition-none will-change-transform' : 'transition-transform duration-75 ease-out'
+              ]"
               :style="{ transform: `translate(${imgTranslate.x}px, ${imgTranslate.y}px) scale(${imgScale})` }"
             >
               <!-- 底图 -->
@@ -1957,7 +1974,10 @@ watch(
 
           <template v-else-if="genStore.streamPreviewUrl">
             <div 
-              class="transition-transform duration-75 flex items-center justify-center max-w-full max-h-full"
+              class="flex items-center justify-center max-w-full max-h-full"
+              :class="[
+                (isPanning || isTouchPanning) ? 'transition-none will-change-transform' : 'transition-transform duration-75 ease-out'
+              ]"
               :style="{ transform: `translate(${imgTranslate.x}px, ${imgTranslate.y}px) scale(${imgScale})` }"
             >
               <img :src="genStore.streamPreviewUrl" class="max-w-[85vw] max-h-[85vh] object-contain drop-shadow-2xl pointer-events-none rounded-lg" />
@@ -1966,7 +1986,10 @@ watch(
 
           <template v-else-if="genStore.currentImage">
             <div 
-              class="transition-transform duration-75 flex items-center justify-center max-w-full max-h-full relative"
+              class="flex items-center justify-center max-w-full max-h-full relative"
+              :class="[
+                (isPanning || isTouchPanning) ? 'transition-none will-change-transform' : 'transition-transform duration-75 ease-out'
+              ]"
               :style="{ transform: `translate(${imgTranslate.x}px, ${imgTranslate.y}px) scale(${imgScale})` }"
             >
               <img :src="genStore.currentImage.url" class="max-w-[85vw] max-h-[85vh] object-contain drop-shadow-2xl pointer-events-none rounded-lg" />
