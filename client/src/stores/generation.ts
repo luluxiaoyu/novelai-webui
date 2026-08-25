@@ -353,9 +353,13 @@ export const useGenerationStore = defineStore('generation', () => {
         parameters.cfg_rescale = params.cfg_rescale ?? 0;
         parameters.uncond_scale = params.uncond_scale ?? 0;
 
-        // 同步底层 uc 顶层字段与 v4_negative_prompt
+        // 同步底层 uc、negative_prompt 与 v4_negative_prompt
         const negPrompt = params.negative_prompt || '';
         parameters.uc = negPrompt;
+        parameters.negative_prompt = negPrompt;
+        parameters.tag_hint_uc_preset = negPrompt.length > 50 ? 2 : (negPrompt ? 1 : 0);
+        parameters.tag_hint_qt = 1;
+        parameters.version = 1;
 
         // 提取有效且已启用的角色提示词
         const activeChars = (params.characters || []).filter(c => c.enabled !== false && c.prompt && c.prompt.trim());

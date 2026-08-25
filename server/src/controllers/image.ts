@@ -84,6 +84,14 @@ export const generateImageStream = async (req: Request, res: Response) => {
 
   try {
     await generationQueue.enqueue(tokenKey, req, res, async () => {
+      const logBody = { ...req.body };
+      if (logBody.parameters) {
+        logBody.parameters = { ...logBody.parameters };
+        if (logBody.parameters.image) logBody.parameters.image = `[base64 len: ${logBody.parameters.image.length}]`;
+        if (logBody.parameters.mask) logBody.parameters.mask = `[base64 len: ${logBody.parameters.mask.length}]`;
+      }
+      console.log(`[generateImageStream] Sending to NovelAI:`, JSON.stringify(logBody));
+
       const response = await naiImageClient.post('/ai/generate-image-stream', req.body, {
         headers: {
           'Authorization': token,
