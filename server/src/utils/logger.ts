@@ -52,8 +52,24 @@ export const logGeneration = (
     const action = body.action || 'generate';
     const prompt = body.input || cleanParams.prompt || cleanParams.v4_prompt?.caption?.base_caption || '';
     const negPrompt = cleanParams.negative_prompt || cleanParams.uc || cleanParams.v4_negative_prompt?.caption?.base_caption || '';
+    let safeError = '';
+    if (details?.error) {
+      if (typeof details.error === 'string') {
+        safeError = details.error;
+      } else if (details.error?.message) {
+        safeError = details.error.message;
+      } else if (typeof details.error === 'object') {
+        try {
+          safeError = JSON.stringify(details.error);
+        } catch {
+          safeError = '[Unserializable Error]';
+        }
+      } else {
+        safeError = String(details.error);
+      }
+    }
 
-    const logText = `[${dateStr} ${timeStr}] [${type.toUpperCase()}] [${status.toUpperCase()}] [IP: ${ip}] [Model: ${model}] [Action: ${action}]\n  Size: ${cleanParams.width}x${cleanParams.height} | Steps: ${cleanParams.steps} | Scale: ${cleanParams.scale} | Sampler: ${cleanParams.sampler} | Schedule: ${cleanParams.noise_schedule || 'karras'} | Seed: ${cleanParams.seed ?? 'random'}\n  Prompt: ${JSON.stringify(prompt)}\n  Negative: ${JSON.stringify(negPrompt)}${details?.error ? `\n  Error: ${JSON.stringify(details.error)}` : ''}\n\n`;
+    const logText = `[${dateStr} ${timeStr}] [${type.toUpperCase()}] [${status.toUpperCase()}] [IP: ${ip}] [Model: ${model}] [Action: ${action}]\n  Size: ${cleanParams.width}x${cleanParams.height} | Steps: ${cleanParams.steps} | Scale: ${cleanParams.scale} | Sampler: ${cleanParams.sampler} | Schedule: ${cleanParams.noise_schedule || 'karras'} | Seed: ${cleanParams.seed ?? 'random'}\n  Prompt: ${JSON.stringify(prompt)}\n  Negative: ${JSON.stringify(negPrompt)}${safeError ? `\n  Error: ${safeError}` : ''}\n\n`;
 
     fs.appendFile(logFile, logText, (err) => {
       if (err) console.error('[Logger] Failed to write log:', err.message);

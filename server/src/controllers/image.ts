@@ -110,12 +110,28 @@ export const generateImageStream = async (req: Request, res: Response) => {
   } catch (error: any) {
     if (res.headersSent) return;
     console.error('Error in streaming generation:', error.message);
-    logGeneration(req, 'stream', 'failed', { error: error.response?.data || error.message });
-    if (error.response) {
-      if (typeof error.response.data?.on === 'function') {
-        return res.status(error.response.status).json({ error: 'Upstream generation error', status: error.response.status });
+    
+    let errorData = error.response?.data;
+    if (errorData && typeof errorData.on === 'function') {
+      try {
+        const chunks: Buffer[] = [];
+        for await (const chunk of errorData) {
+          chunks.push(Buffer.from(chunk));
+        }
+        const text = Buffer.concat(chunks).toString('utf-8');
+        try {
+          errorData = JSON.parse(text);
+        } catch {
+          errorData = { message: text };
+        }
+      } catch {
+        errorData = { message: error.message };
       }
-      return res.status(error.response.status).json(error.response.data);
+    }
+
+    logGeneration(req, 'stream', 'failed', { error: errorData || error.message });
+    if (error.response) {
+      return res.status(error.response.status).json(errorData || { error: 'Upstream generation error', status: error.response.status });
     }
     return res.status(error.status || 500).json({ error: error.message || 'Internal Server Error' });
   }

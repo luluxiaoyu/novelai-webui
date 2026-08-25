@@ -333,8 +333,6 @@ export const useGenerationStore = defineStore('generation', () => {
       if (isV4OrV5) {
         parameters.use_coords = false;
         parameters.noise_schedule = params.noise_schedule || "karras";
-        parameters.straight_alpha = true;
-        parameters.quality_boost = false;
         
         // V5 官方默认 skip_cfg_above_sigma 为 null（避免破坏高频细节）；V4 默认为 19.34
         if (params.skip_cfg_above_sigma !== undefined && params.skip_cfg_above_sigma !== null && params.skip_cfg_above_sigma > 0) {
@@ -358,35 +356,6 @@ export const useGenerationStore = defineStore('generation', () => {
         // 同步底层 uc 顶层字段与 v4_negative_prompt
         const negPrompt = params.negative_prompt || '';
         parameters.uc = negPrompt;
-
-        // 官方 Tag Hint 标识 (uc_preset: 2 = Heavy, 1 = Light, 0 = None; qt: 1 = Quality Toggle)
-        parameters.tag_hint_transparent_background = null;
-        parameters.tag_hint_uc_preset = negPrompt.length > 50 ? 2 : (negPrompt ? 1 : 0);
-        parameters.tag_hint_qt = 1;
-
-        // 官方透传测试集默认参数
-        parameters.extra_passthrough_testing = {
-          prompt: null,
-          uc: null,
-          hide_debug_overlay: false,
-          r: 0,
-          eta: 1,
-          negative_momentum: 0,
-          director_reference_descriptions: null,
-          director_reference_information_extracted: null,
-          director_reference_strengths: null,
-          director_reference_secondary_strengths: null,
-          original_width: null,
-          original_height: null,
-          crop_top: null,
-          crop_left: null,
-          crash_hydra: false,
-          upscale: null,
-          straight_alpha: null,
-          quality_boost: null,
-          upscaled_enhance: null,
-          pd_grid: null
-        };
 
         // 提取有效且已启用的角色提示词
         const activeChars = (params.characters || []).filter(c => c.enabled !== false && c.prompt && c.prompt.trim());
