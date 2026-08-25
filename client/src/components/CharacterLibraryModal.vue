@@ -23,6 +23,7 @@ export interface CharacterPreset {
   uc?: string;
   isBuiltin?: boolean;
   isFavorite?: boolean;
+  updatedAt?: number;
 }
 
 const BUILTIN_PRESETS: CharacterPreset[] = [
@@ -223,13 +224,14 @@ const handleSaveCustomPreset = () => {
 
   const category = editingPreset.value.category?.trim() || '自定义';
   const newPreset: CharacterPreset = {
-    id: editingPreset.value.id || `custom-${Date.now()}`,
+    id: editingPreset.value.id || `custom-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     name: editingPreset.value.name.trim(),
     category,
     prompt: editingPreset.value.prompt.trim(),
     uc: editingPreset.value.uc?.trim() || undefined,
     isBuiltin: false,
-    isFavorite: editingPreset.value.isFavorite || false
+    isFavorite: editingPreset.value.isFavorite || false,
+    updatedAt: Date.now()
   };
 
   const existingIdx = genStore.customCharacters.findIndex(p => p.id === newPreset.id);
@@ -248,6 +250,7 @@ const handleSaveCustomPreset = () => {
 const handleDeleteCustomPreset = (id: string) => {
   if (!genStore.customCharacters) return;
   genStore.customCharacters = genStore.customCharacters.filter(p => p.id !== id);
+  webdavStore.recordDeletion('character', id);
   webdavStore.autoSyncMetadata(genStore);
 };
 

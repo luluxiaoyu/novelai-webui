@@ -767,7 +767,9 @@ export const useGenerationStore = defineStore('generation', () => {
 
   const deletePromptHistory = (id: string) => {
     promptHistory.value = promptHistory.value.filter(p => p.id !== id);
-    useWebDAVStore().autoSyncMetadata(useGenerationStore());
+    const webdavStore = useWebDAVStore();
+    webdavStore.recordDeletion('promptHistory', id);
+    webdavStore.autoSyncMetadata(useGenerationStore());
   };
 
   const toggleFavoritePrompt = (id: string) => {

@@ -3,6 +3,18 @@ import { ref } from 'vue';
 import { encryptedAxios } from '../utils/api';
 import { useAuthStore } from './auth';
 
+export interface WebDAVMetadata {
+  updatedAt?: number;
+  promptHistory: any[];
+  savedPromptGroups: string[];
+  customCharacters: any[];
+  customStyles: any[];
+  history: any[];
+  deletedCharacterIds?: string[];
+  deletedStyleIds?: string[];
+  deletedPromptHistoryIds?: string[];
+}
+
 export const useWebDAVStore = defineStore('webdav', () => {
   const config = ref({
     url: '',
@@ -17,6 +29,11 @@ export const useWebDAVStore = defineStore('webdav', () => {
   const isSyncing = ref<boolean>(false);
   const syncProgress = ref<number>(0);
   const syncText = ref<string>('');
+
+  // 记录本地已删除项墓碑（防止从云端增量拉取时被复活）
+  const deletedCharacterIds = ref<string[]>([]);
+  const deletedStyleIds = ref<string[]>([]);
+  const deletedPromptHistoryIds = ref<string[]>([]);
   
   const authStore = useAuthStore();
   
@@ -144,49 +161,150 @@ export const useWebDAVStore = defineStore('webdav', () => {
 
   // 内部辅助方法
   const _getProfilePath = () => `${config.value.basePath}/${currentProfile.value}`;
+
+  // 记录删除墓碑
+  const recordDeletion = (type: 'character' | 'style' | 'promptHistory', id: string) => {
+    if (!id) return;
+    if (type === 'character' && !deletedCharacterIds.value.includes(id)) {
+      deletedCharacterIds.value.push(id);
+    } else if (type === 'style' && !deletedStyleIds.value.includes(id)) {
+      deletedStyleIds.value.push(id);
+    } else if (type === 'promptHistory' && !deletedPromptHistoryIds.value.includes(id)) {
+      deletedPromptHistoryIds.value.push(id);
+    }
+  };
+
+  // 从远端获取 metadata.json
+  const fetchRemoteMetadata = async (profilePath: string): Promise<WebDAVMetadata | null> => {
+    try {
+      const metaB64 = await executeAction('getFileContents', `${profilePath}/metadata.json`);
+      if (!metaB64) return null;
+      const jsonStr = decodeURIComponent(escape(atob(metaB64)));
+      return JSON.parse(jsonStr);
+    } catch (e) {
+      return null;
+    }
+  };
+
+  /**
+   * 增量双向合并预设列表（角色库、画风库等）
+   * - 双方各自新增的数据全量保留（增量并集）
+   * - 同 ID 项：按 updatedAt 较新者为准，若无时间戳则本地修改优先
+   * - 过滤已删除墓碑
+   */
+  const mergeObjectPresets = <T extends { id: string; name?: string; updatedAt?: number }>(
+    localList: T[] = [],
+    remoteList: T[] = [],
+    deletedIds: Set<string> = new Set()
+  ): T[] => {
+    const map = new Map<string, T>();
+
+    // 1. 放入未被删除的远端项
+    for (const item of (remoteList || [])) {
+      if (!item || !item.id || deletedIds.has(item.id)) continue;
+      map.set(item.id, { ...item });
+    }
+
+    // 2. 增量合入本地项（本地独有的增量保留，同 ID 项按时间戳比较）
+    for (const item of (localList || [])) {
+      if (!item || !item.id || deletedIds.has(item.id)) continue;
+      if (map.has(item.id)) {
+        const remoteItem = map.get(item.id)!;
+        if (item.updatedAt && remoteItem.updatedAt) {
+          map.set(item.id, item.updatedAt >= remoteItem.updatedAt ? { ...item } : { ...remoteItem });
+        } else {
+          map.set(item.id, { ...remoteItem, ...item });
+        }
+      } else {
+        map.set(item.id, { ...item });
+      }
+    }
+
+    return Array.from(map.values());
+  };
+
+  /**
+   * 增量双向合并历史提示词
+   */
+  const mergePromptHistory = (
+    localList: any[] = [],
+    remoteList: any[] = [],
+    deletedIds: Set<string> = new Set()
+  ): any[] => {
+    const map = new Map<string, any>();
+
+    const getKey = (item: any) => {
+      if (item.id) return item.id;
+      return `${item.timestamp}_${item.prompt}_${item.negative_prompt || ''}`;
+    };
+
+    for (const item of (remoteList || [])) {
+      if (!item) continue;
+      const key = getKey(item);
+      if (item.id && deletedIds.has(item.id)) continue;
+      map.set(key, { ...item });
+    }
+
+    for (const item of (localList || [])) {
+      if (!item) continue;
+      const key = getKey(item);
+      if (item.id && deletedIds.has(item.id)) continue;
+      if (map.has(key)) {
+        map.set(key, { ...map.get(key), ...item });
+      } else {
+        map.set(key, { ...item });
+      }
+    }
+
+    return Array.from(map.values())
+      .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+      .slice(0, 500);
+  };
+
+  /**
+   * 增量合并字符串数组（提示词分类组）
+   */
+  const mergeStringArrays = (localArr: string[] = [], remoteArr: string[] = []): string[] => {
+    return Array.from(new Set([...(remoteArr || []), ...(localArr || [])])).filter(Boolean);
+  };
   
-  // 核心同步方法
+  // 核心增量同步方法：云端 -> 本地
   const syncDown = async (genStore: any) => {
     isSyncing.value = true;
     syncProgress.value = 0;
-    syncText.value = '正在读取云端索引...';
+    syncText.value = '正在读取云端数据并增量合并...';
     try {
       const profilePath = _getProfilePath();
-      let remoteMetadata: any = null;
-      try {
-        const metaB64 = await executeAction('getFileContents', `${profilePath}/metadata.json`);
-        const jsonStr = decodeURIComponent(escape(atob(metaB64)));
-        remoteMetadata = JSON.parse(jsonStr);
-      } catch (e) {
-        console.warn('No remote metadata found, starting fresh.');
-      }
+      const remoteMetadata = await fetchRemoteMetadata(profilePath);
       
       if (remoteMetadata) {
-        genStore.promptHistory = remoteMetadata.promptHistory || [];
-        if (remoteMetadata.savedPromptGroups) {
-          genStore.savedPromptGroups = remoteMetadata.savedPromptGroups;
-        }
-        if (remoteMetadata.customCharacters) {
-          genStore.customCharacters = remoteMetadata.customCharacters;
-        }
-        if (remoteMetadata.customStyles) {
-          genStore.customStyles = remoteMetadata.customStyles;
-        }
+        // 汇总两端的删除墓碑
+        const allDeletedChars = new Set([...deletedCharacterIds.value, ...(remoteMetadata.deletedCharacterIds || [])]);
+        const allDeletedStyles = new Set([...deletedStyleIds.value, ...(remoteMetadata.deletedStyleIds || [])]);
+        const allDeletedPrompts = new Set([...deletedPromptHistoryIds.value, ...(remoteMetadata.deletedPromptHistoryIds || [])]);
+
+        deletedCharacterIds.value = Array.from(allDeletedChars);
+        deletedStyleIds.value = Array.from(allDeletedStyles);
+        deletedPromptHistoryIds.value = Array.from(allDeletedPrompts);
+
+        // 增量双向合并角色库、画风库、历史词、词组（绝不丢弃本地新增）
+        genStore.customCharacters = mergeObjectPresets(genStore.customCharacters || [], remoteMetadata.customCharacters || [], allDeletedChars);
+        genStore.customStyles = mergeObjectPresets(genStore.customStyles || [], remoteMetadata.customStyles || [], allDeletedStyles);
+        genStore.promptHistory = mergePromptHistory(genStore.promptHistory || [], remoteMetadata.promptHistory || [], allDeletedPrompts);
+        genStore.savedPromptGroups = mergeStringArrays(genStore.savedPromptGroups || [], remoteMetadata.savedPromptGroups || []);
+
+        // 图片历史增量合并：下载本地缺失的云端图片，保留所有本地已有图片
         const remoteHistory = remoteMetadata.history || [];
-        const localIds = new Set(genStore.history.map((h: any) => h.id));
-        
+        const localIds = new Set((genStore.history || []).map((h: any) => h.id));
         const missingImages = remoteHistory.filter((r: any) => !localIds.has(r.id));
         const total = missingImages.length;
         
-        if (total === 0) {
-          syncProgress.value = 100;
-          syncText.value = '无需同步，已是最新状态';
-        } else {
+        if (total > 0) {
           let count = 0;
           for (const rImg of missingImages) {
             count++;
-            syncText.value = `正在下载图片 ${count} / ${total} ...`;
-            syncProgress.value = Math.round((count / total) * 100);
+            syncText.value = `正在增量下载图片 ${count} / ${total} ...`;
+            syncProgress.value = Math.round((count / total) * 90);
             try {
               const b64 = await executeAction('getFileContents', rImg.remotePath);
               rImg.url = `data:image/png;base64,${b64}`;
@@ -199,8 +317,17 @@ export const useWebDAVStore = defineStore('webdav', () => {
         }
         
         genStore.history.sort((a: any, b: any) => b.timestamp - a.timestamp);
+
+        // 将增量合并后的最新全量数据反哺更新至云端 metadata.json
+        syncText.value = '正在更新双端索引...';
+        await autoSyncMetadata(genStore);
+
+        syncProgress.value = 100;
+        syncText.value = total > 0 ? `增量同步完成，已合并并下载 ${total} 张图片` : '增量同步完成，配置与数据已双向对齐';
       } else {
-        syncText.value = '云端无存档数据';
+        // 云端为空，将本地全量推送至云端初始化
+        syncText.value = '云端无存档，正在将本地数据初始化至云端...';
+        await syncUp(genStore);
       }
       return true;
     } catch (e) {
@@ -208,24 +335,43 @@ export const useWebDAVStore = defineStore('webdav', () => {
       syncText.value = '同步失败';
       return false;
     } finally {
-      setTimeout(() => { isSyncing.value = false; }, 1000);
+      setTimeout(() => { isSyncing.value = false; }, 1200);
     }
   };
 
+  // 核心增量同步方法：本地 -> 云端
   const syncUp = async (genStore: any) => {
     isSyncing.value = true;
     syncProgress.value = 0;
-    syncText.value = '正在准备推送...';
+    syncText.value = '正在双向合并并推送云端...';
     try {
       const profilePath = _getProfilePath();
-      const historyForMeta = [];
-      const total = genStore.history.length;
+      const remoteMetadata = await fetchRemoteMetadata(profilePath);
+
+      // 先与云端已有数据增量合并（防止覆盖云端其他设备新增的角色/画风）
+      if (remoteMetadata) {
+        const allDeletedChars = new Set([...deletedCharacterIds.value, ...(remoteMetadata.deletedCharacterIds || [])]);
+        const allDeletedStyles = new Set([...deletedStyleIds.value, ...(remoteMetadata.deletedStyleIds || [])]);
+        const allDeletedPrompts = new Set([...deletedPromptHistoryIds.value, ...(remoteMetadata.deletedPromptHistoryIds || [])]);
+
+        deletedCharacterIds.value = Array.from(allDeletedChars);
+        deletedStyleIds.value = Array.from(allDeletedStyles);
+        deletedPromptHistoryIds.value = Array.from(allDeletedPrompts);
+
+        genStore.customCharacters = mergeObjectPresets(genStore.customCharacters || [], remoteMetadata.customCharacters || [], allDeletedChars);
+        genStore.customStyles = mergeObjectPresets(genStore.customStyles || [], remoteMetadata.customStyles || [], allDeletedStyles);
+        genStore.promptHistory = mergePromptHistory(genStore.promptHistory || [], remoteMetadata.promptHistory || [], allDeletedPrompts);
+        genStore.savedPromptGroups = mergeStringArrays(genStore.savedPromptGroups || [], remoteMetadata.savedPromptGroups || []);
+      }
+
+      const total = (genStore.history || []).length;
+      const historyForMeta: any[] = [];
       
       let count = 0;
-      for (const img of genStore.history) {
+      for (const img of (genStore.history || [])) {
         count++;
-        syncText.value = `正在校验与推送 ${count} / ${total} ...`;
-        syncProgress.value = Math.round((count / total) * 95); // 预留5%给索引
+        syncText.value = `正在校验与推送图片 ${count} / ${total} ...`;
+        syncProgress.value = Math.round((count / Math.max(1, total)) * 90);
         
         const dateFolder = new Date(img.timestamp).toISOString().split('T')[0];
         const dirPath = `${profilePath}/images/${dateFolder}`;
@@ -250,13 +396,17 @@ export const useWebDAVStore = defineStore('webdav', () => {
         }
       }
       
-      syncText.value = '正在更新索引数据...';
-      const metaObj = {
-        promptHistory: genStore.promptHistory,
-        savedPromptGroups: genStore.savedPromptGroups,
-        customCharacters: genStore.customCharacters,
-        customStyles: genStore.customStyles,
-        history: historyForMeta
+      syncText.value = '正在更新云端索引数据...';
+      const metaObj: WebDAVMetadata = {
+        updatedAt: Date.now(),
+        promptHistory: genStore.promptHistory || [],
+        savedPromptGroups: genStore.savedPromptGroups || [],
+        customCharacters: genStore.customCharacters || [],
+        customStyles: genStore.customStyles || [],
+        history: historyForMeta,
+        deletedCharacterIds: deletedCharacterIds.value,
+        deletedStyleIds: deletedStyleIds.value,
+        deletedPromptHistoryIds: deletedPromptHistoryIds.value
       };
       
       const metaStr = JSON.stringify(metaObj, null, 2);
@@ -264,14 +414,14 @@ export const useWebDAVStore = defineStore('webdav', () => {
       await executeAction('putFileContents', `${profilePath}/metadata.json`, metaB64);
       
       syncProgress.value = 100;
-      syncText.value = '同步完成';
+      syncText.value = '增量推送完成，双端已对齐';
       return true;
     } catch (e) {
       console.error('Sync up failed:', e);
       syncText.value = '同步失败';
       return false;
     } finally {
-      setTimeout(() => { isSyncing.value = false; }, 1000);
+      setTimeout(() => { isSyncing.value = false; }, 1200);
     }
   };
 
@@ -307,23 +457,55 @@ export const useWebDAVStore = defineStore('webdav', () => {
     }
   };
 
+  /**
+   * 自动后台同步索引（增量合并后再写入，避免多设备相互覆盖）
+   */
   const autoSyncMetadata = async (genStore: any) => {
-    if (!autoSync.value) return;
+    if (!autoSync.value && !isSyncing.value) return;
     try {
       const profilePath = _getProfilePath();
-      const historyForMeta = genStore.history.map((h: any) => ({
+      const remoteMetadata = await fetchRemoteMetadata(profilePath);
+
+      const allDeletedChars = new Set([...deletedCharacterIds.value, ...(remoteMetadata?.deletedCharacterIds || [])]);
+      const allDeletedStyles = new Set([...deletedStyleIds.value, ...(remoteMetadata?.deletedStyleIds || [])]);
+      const allDeletedPrompts = new Set([...deletedPromptHistoryIds.value, ...(remoteMetadata?.deletedPromptHistoryIds || [])]);
+
+      deletedCharacterIds.value = Array.from(allDeletedChars);
+      deletedStyleIds.value = Array.from(allDeletedStyles);
+      deletedPromptHistoryIds.value = Array.from(allDeletedPrompts);
+
+      // 合并两端
+      const mergedCharacters = mergeObjectPresets(genStore.customCharacters || [], remoteMetadata?.customCharacters || [], allDeletedChars);
+      const mergedStyles = mergeObjectPresets(genStore.customStyles || [], remoteMetadata?.customStyles || [], allDeletedStyles);
+      const mergedPrompts = mergePromptHistory(genStore.promptHistory || [], remoteMetadata?.promptHistory || [], allDeletedPrompts);
+      const mergedGroups = mergeStringArrays(genStore.savedPromptGroups || [], remoteMetadata?.savedPromptGroups || []);
+
+      // 同步回本地 Store
+      genStore.customCharacters = mergedCharacters;
+      genStore.customStyles = mergedStyles;
+      genStore.promptHistory = mergedPrompts;
+      genStore.savedPromptGroups = mergedGroups;
+
+      const historyForMeta = (genStore.history || []).map((h: any) => ({
         id: h.id,
         params: h.params,
         timestamp: h.timestamp,
         remotePath: `${profilePath}/images/${new Date(h.timestamp).toISOString().split('T')[0]}/${h.id}.png`
       }));
-      const metaB64 = btoa(unescape(encodeURIComponent(JSON.stringify({
-        promptHistory: genStore.promptHistory,
-        savedPromptGroups: genStore.savedPromptGroups,
-        customCharacters: genStore.customCharacters,
-        customStyles: genStore.customStyles,
-        history: historyForMeta
-      }))));
+
+      const metaObj: WebDAVMetadata = {
+        updatedAt: Date.now(),
+        promptHistory: mergedPrompts,
+        savedPromptGroups: mergedGroups,
+        customCharacters: mergedCharacters,
+        customStyles: mergedStyles,
+        history: historyForMeta,
+        deletedCharacterIds: deletedCharacterIds.value,
+        deletedStyleIds: deletedStyleIds.value,
+        deletedPromptHistoryIds: deletedPromptHistoryIds.value
+      };
+
+      const metaB64 = btoa(unescape(encodeURIComponent(JSON.stringify(metaObj, null, 2))));
       await executeAction('putFileContents', `${profilePath}/metadata.json`, metaB64);
     } catch (e) {
       console.warn('Auto-sync metadata failed:', e);
@@ -338,11 +520,15 @@ export const useWebDAVStore = defineStore('webdav', () => {
     isSyncing,
     syncProgress,
     syncText,
+    deletedCharacterIds,
+    deletedStyleIds,
+    deletedPromptHistoryIds,
     testConnection,
     loadProfiles,
     createProfile,
     deleteProfile,
     executeAction,
+    recordDeletion,
     syncDown,
     syncUp,
     autoSyncSingle,
@@ -352,6 +538,6 @@ export const useWebDAVStore = defineStore('webdav', () => {
   };
 }, {
   persist: {
-    pick: ['config', 'currentProfile', 'autoSync']
+    pick: ['config', 'currentProfile', 'autoSync', 'deletedCharacterIds', 'deletedStyleIds', 'deletedPromptHistoryIds']
   }
 });

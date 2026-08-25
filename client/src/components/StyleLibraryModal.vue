@@ -22,6 +22,7 @@ export interface StylePreset {
   prompt: string;
   uc?: string;
   isFavorite?: boolean;
+  updatedAt?: number;
 }
 
 const activeCategory = ref<string>('all');
@@ -130,12 +131,13 @@ const handleSaveCustomPreset = () => {
 
   const category = editingPreset.value.category?.trim() || '自定义';
   const newPreset: StylePreset = {
-    id: editingPreset.value.id || `style-${Date.now()}`,
+    id: editingPreset.value.id || `style-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     name: editingPreset.value.name.trim(),
     category,
     prompt: editingPreset.value.prompt.trim(),
     uc: editingPreset.value.uc?.trim() || undefined,
-    isFavorite: editingPreset.value.isFavorite || false
+    isFavorite: editingPreset.value.isFavorite || false,
+    updatedAt: Date.now()
   };
 
   const existingIdx = genStore.customStyles.findIndex(p => p.id === newPreset.id);
@@ -167,6 +169,7 @@ const openEditModal = (preset: StylePreset) => {
 const handleDeleteCustomPreset = (id: string) => {
   if (!genStore.customStyles) return;
   genStore.customStyles = genStore.customStyles.filter(p => p.id !== id);
+  webdavStore.recordDeletion('style', id);
   webdavStore.autoSyncMetadata(genStore);
 };
 
