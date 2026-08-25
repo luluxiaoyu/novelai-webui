@@ -205,7 +205,17 @@ export const useGenerationStore = defineStore('generation', () => {
   });
 
   const history = ref<GeneratedImage[]>([]);
-  const promptHistory = ref<Array<{ id: string; prompt: string; negative_prompt: string; timestamp: number; note?: string; isFavorite?: boolean; group?: string }>>([]);
+  const promptHistory = ref<Array<{ 
+    id: string; 
+    prompt: string; 
+    negative_prompt: string; 
+    characters?: Array<{ id: string; prompt: string; uc: string; center: { x: number; y: number }; enabled: boolean }>;
+    use_coords?: boolean;
+    timestamp: number; 
+    note?: string; 
+    isFavorite?: boolean; 
+    group?: string 
+  }>>([]);
   const savedPromptGroups = ref<string[]>([]);
   const customCharacters = ref<Array<{ id: string; name: string; category: string; prompt: string; uc?: string; isBuiltin?: boolean; isFavorite?: boolean }>>([]);
   const customStyles = ref<Array<{ id: string; name: string; category: string; prompt: string; uc?: string; isFavorite?: boolean }>>([]);
@@ -605,9 +615,14 @@ export const useGenerationStore = defineStore('generation', () => {
         }
       }
 
-      // 记录提示词历史
+      // 记录提示词与角色历史
       if (params.prompt.trim()) {
-        const existingIdx = promptHistory.value.findIndex(p => p.prompt === params.prompt);
+        const charStr = JSON.stringify(params.characters || []);
+        const existingIdx = promptHistory.value.findIndex(p => 
+          p.prompt === params.prompt && 
+          p.negative_prompt === params.negative_prompt &&
+          JSON.stringify(p.characters || []) === charStr
+        );
         let preservedNote = undefined;
         let preservedFav = false;
         let preservedGroup = undefined;
@@ -623,6 +638,8 @@ export const useGenerationStore = defineStore('generation', () => {
           id: Date.now().toString(),
           prompt: params.prompt,
           negative_prompt: params.negative_prompt,
+          characters: params.characters && params.characters.length > 0 ? JSON.parse(JSON.stringify(params.characters)) : undefined,
+          use_coords: params.use_coords,
           timestamp: Date.now(),
           note: preservedNote,
           isFavorite: preservedFav,
@@ -723,9 +740,22 @@ export const useGenerationStore = defineStore('generation', () => {
     params.seed = -1; // 默认还原为随机种子，防止误点导致生成完全一样的图
   };
 
-  const usePrompt = (p: { prompt: string; negative_prompt: string }) => {
+  const usePrompt = (p: { 
+    prompt: string; 
+    negative_prompt: string; 
+    characters?: Array<{ id: string; prompt: string; uc: string; center: { x: number; y: number }; enabled: boolean }>;
+    use_coords?: boolean;
+  }) => {
     params.prompt = p.prompt;
     if (p.negative_prompt) params.negative_prompt = p.negative_prompt;
+    if (p.characters && p.characters.length > 0) {
+      params.characters = JSON.parse(JSON.stringify(p.characters));
+    } else {
+      params.characters = [];
+    }
+    if (typeof p.use_coords === 'boolean') {
+      params.use_coords = p.use_coords;
+    }
   };
 
   const sendToInpaint = (imgUrl: string) => {

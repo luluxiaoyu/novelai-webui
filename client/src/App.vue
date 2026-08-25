@@ -280,6 +280,14 @@ const handleCopyPrompt = async (item: any) => {
     if (item.negative_prompt) {
       text += `\n### Negative Prompt:\n${item.negative_prompt}`;
     }
+    if (item.characters && item.characters.length > 0) {
+      text += `\n### Characters (${item.characters.length}):`;
+      item.characters.forEach((char: any, idx: number) => {
+        text += `\n[Character ${idx + 1}] Prompt: ${char.prompt || '(None)'}`;
+        if (char.uc) text += ` | UC: ${char.uc}`;
+        if (item.use_coords && char.center) text += ` | Pos: (${char.center.x}, ${char.center.y})`;
+      });
+    }
     await navigator.clipboard.writeText(text);
     copiedPromptId.value = item.id;
     setTimeout(() => {
@@ -2233,6 +2241,23 @@ watch(
                   <p v-if="item.negative_prompt" class="text-[11px] sm:text-xs text-red-500/80 dark:text-red-400/80 leading-relaxed break-all select-text" :title="item.negative_prompt">
                     <span class="font-semibold text-red-600/90 dark:text-red-400/90">Negative:</span> {{ item.negative_prompt }}
                   </p>
+
+                  <!-- 角色专属设定 (V4/V4.5/V5 多角色) -->
+                  <div v-if="item.characters && item.characters.length > 0" class="mt-2 flex flex-wrap gap-1.5 items-center">
+                    <div 
+                      v-for="(char, cIdx) in item.characters" 
+                      :key="char.id || cIdx"
+                      class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/60 text-[11px] text-purple-700 dark:text-purple-300"
+                      :title="`角色 ${cIdx + 1}:\n正向: ${char.prompt || '无'}\n负向: ${char.uc || '无'}\n坐标: (${Math.round((char.center?.x ?? 0.5) * 100)}%, ${Math.round((char.center?.y ?? 0.5) * 100)}%)`"
+                    >
+                      <User class="w-3 h-3 shrink-0 text-purple-500" />
+                      <span class="font-bold">角色 {{ cIdx + 1 }}:</span>
+                      <span class="truncate max-w-[160px] font-mono text-[10px]">{{ char.prompt || '(未填描述)' }}</span>
+                      <span v-if="item.use_coords" class="text-[9px] text-purple-500 dark:text-purple-300 bg-purple-100 dark:bg-purple-900/60 px-1 py-0.2 rounded font-mono">
+                        {{ Math.round((char.center?.x ?? 0.5) * 100) }}%,{{ Math.round((char.center?.y ?? 0.5) * 100) }}%
+                      </span>
+                    </div>
+                  </div>
                 </div>
                 
                 <!-- 底部操作按钮栏 (移动端常驻展示，PC端hover展现) -->
