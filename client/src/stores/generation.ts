@@ -99,23 +99,14 @@ if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
 export const useGenerationStore = defineStore('generation', () => {
   const authStore = useAuthStore();
   
-  // 跨标签页合并历史并保存到 IDB
+  // 保存当前历史到 IndexedDB (严格持久化当前状态，防止已删除项重新复活)
   let isSavingIDB = false;
   const saveHistoryToIDB = async () => {
     if (isSavingIDB) return;
     isSavingIDB = true;
     try {
-      const raw = await idbStorage.getItem('history');
-      const map = new Map<string, GeneratedImage>();
-      if (raw) {
-        try {
-          const diskList: GeneratedImage[] = JSON.parse(raw);
-          diskList.forEach(item => { if (item?.id) map.set(item.id, item); });
-        } catch {}
-      }
-      history.value.forEach(item => { if (item?.id) map.set(item.id, item); });
-      const merged = Array.from(map.values()).sort((a, b) => b.timestamp - a.timestamp).slice(0, 100);
-      await idbStorage.setItem('history', JSON.stringify(merged));
+      const list = history.value.slice(0, 100);
+      await idbStorage.setItem('history', JSON.stringify(list));
     } catch (e) {
       console.error('Failed to save history to IDB:', e);
     } finally {
@@ -123,19 +114,17 @@ export const useGenerationStore = defineStore('generation', () => {
     }
   };
 
-  // 异步从 IDB 加载或合并历史
+  // 异步从 IDB 加载历史
   const loadHistoryFromIDB = async () => {
     try {
       const data = await idbStorage.getItem('history');
       if (data) {
         const diskList: GeneratedImage[] = JSON.parse(data);
-        const map = new Map<string, GeneratedImage>();
-        diskList.forEach(item => { if (item?.id) map.set(item.id, item); });
-        history.value.forEach(item => { if (item?.id) map.set(item.id, item); });
-        const merged = Array.from(map.values()).sort((a, b) => b.timestamp - a.timestamp).slice(0, 100);
-        history.value = merged;
-        if (history.value.length > 0 && !currentImage.value) {
-          currentImage.value = history.value[0];
+        if (Array.isArray(diskList)) {
+          history.value = diskList.slice(0, 100);
+          if (history.value.length > 0 && !currentImage.value) {
+            currentImage.value = history.value[0];
+          }
         }
       }
     } catch (e) {
@@ -920,14 +909,8 @@ export const useGenerationStore = defineStore('generation', () => {
     clearCharacters
   };
 }, {
-  persist: [
-    {
-      pick: ['params', 'promptHistory', 'savedPromptGroups', 'customCharacters', 'customStyles', 'enableTagSuggestions', 'enableStreamThrottle'],
-      storage: localStorage
-    },
-    {
-      pick: ['history'],
-      storage: idbStorage as any
-    }
-  ]
+  persist: {
+    pick: ['params', 'promptHistory', 'savedPromptGroups', 'customCharacters', 'customStyles', 'enableTagSuggestions', 'enableStreamThrottle'],
+    storage: localStorage
+  }
 });
