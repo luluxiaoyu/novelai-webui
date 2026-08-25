@@ -9,6 +9,7 @@ import JSZip from 'jszip';
 import CustomSelect from './components/CustomSelect.vue';
 import CharacterLibraryModal from './components/CharacterLibraryModal.vue';
 import StyleLibraryModal from './components/StyleLibraryModal.vue';
+import PromptTextarea from './components/PromptTextarea.vue';
 import { parsePngMetadata, type ParsedImageMetadata } from './utils/pngMetadata';
 import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Palette, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud, Cloud, Wifi, Sparkles, ChevronDown, ChevronUp, RotateCcw, FileText, Plus, Minus, Users, User, UserPlus, Clock } from 'lucide-vue-next';
 
@@ -1192,8 +1193,26 @@ watch(
         <!-- 提示词输入区 -->
         <div class="flex flex-col gap-3">
           <div>
-            <div class="flex justify-between items-center mb-1.5">
-              <label class="block text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">正向提示词 (Prompt)</label>
+            <div class="flex justify-between items-center mb-1.5 flex-wrap gap-y-1">
+              <div class="flex items-center gap-2">
+                <label class="block text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">正向提示词 (Prompt)</label>
+                <!-- Tag 词条联想推荐 Toggle 开关 -->
+                <button 
+                  type="button"
+                  @click="genStore.enableTagSuggestions = !genStore.enableTagSuggestions"
+                  class="text-[11px] px-2 py-0.5 rounded-full font-medium flex items-center gap-1 transition select-none cursor-pointer border"
+                  :class="genStore.enableTagSuggestions ? 'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-800' : 'bg-gray-100 dark:bg-gray-800/80 text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-700 hover:text-gray-600 dark:hover:text-gray-300'"
+                  :title="genStore.enableTagSuggestions ? 'Tag 词条联想推荐已开启 (点击关闭)' : 'Tag 词条联想推荐已关闭 (点击开启)'"
+                >
+                  <Sparkles class="w-3 h-3" :class="genStore.enableTagSuggestions ? 'text-amber-500 fill-amber-500' : 'text-gray-400 opacity-60'" />
+                  <span>{{ genStore.enableTagSuggestions ? 'Tag推荐' : 'Tag推荐' }}</span>
+                  <span 
+                    class="w-1.5 h-1.5 rounded-full" 
+                    :class="genStore.enableTagSuggestions ? 'bg-amber-500 animate-pulse' : 'bg-gray-300 dark:bg-gray-600'"
+                  ></span>
+                </button>
+              </div>
+
               <div class="flex items-center gap-2.5">
                 <button 
                   @click="showStyleLibrary = true" 
@@ -1221,12 +1240,11 @@ watch(
                 </button>
               </div>
             </div>
-            <textarea 
+            <PromptTextarea 
               v-model="genStore.params.prompt" 
-              rows="3" 
-              class="w-full bg-gray-50 dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-xl p-3 text-xs outline-none focus:ring-2 focus:ring-blue-500 resize-none font-mono custom-scrollbar transition-colors" 
+              :rows="3" 
               placeholder="1girl, masterpiece, best quality, highly detailed, beautiful lighting..."
-            ></textarea>
+            />
           </div>
 
           <div>
@@ -1240,12 +1258,12 @@ watch(
                 + 官方画质预设
               </button>
             </div>
-            <textarea 
+            <PromptTextarea 
               v-model="genStore.params.negative_prompt" 
-              rows="2" 
-              class="w-full bg-gray-50 dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-xl p-3 text-xs outline-none focus:ring-2 focus:ring-blue-500 resize-none font-mono text-gray-500 dark:text-gray-400 custom-scrollbar transition-colors" 
+              :rows="2" 
               placeholder="lowres, bad anatomy, bad hands, text, error, missing fingers..."
-            ></textarea>
+              textarea-class="text-gray-500 dark:text-gray-400"
+            />
           </div>
 
           <!-- V4 / V4.5 / V5 多角色定位与专属提示词 (Character Prompts) -->
@@ -1370,12 +1388,12 @@ watch(
 
                 <!-- 角色专属 Prompt -->
                 <div>
-                  <textarea 
+                  <PromptTextarea 
                     v-model="char.prompt" 
-                    rows="2" 
-                    class="w-full bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg p-2 text-xs outline-none focus:ring-1 focus:ring-blue-500 resize-none font-mono custom-scrollbar" 
+                    :rows="2" 
                     :placeholder="`角色 ${idx + 1} 特征 (如 1girl, nahida, dress, blonde hair, green eyes...)`"
-                  ></textarea>
+                    textarea-class="p-2 border-gray-200 dark:border-gray-800 rounded-lg focus:ring-1"
+                  />
                 </div>
 
                 <!-- 角色专属 UC (可选单行) -->

@@ -25,6 +25,7 @@ router.post('/ai/generate-image', generateImage);
 router.post('/generate-image-stream', generateImageStream);
 router.post('/ai/generate-image-stream', generateImageStream);
 router.get('/ai/generate-image/suggest-tags', suggestTags);
+router.get('/generate-image/suggest-tags', suggestTags);
 
 router.post('/webdav/action', webdavAction);
 
