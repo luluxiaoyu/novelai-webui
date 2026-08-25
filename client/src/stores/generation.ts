@@ -140,6 +140,48 @@ export const useGenerationStore = defineStore('generation', () => {
   const savedPromptGroups = ref<string[]>([]);
   const customCharacters = ref<Array<{ id: string; name: string; category: string; prompt: string; uc?: string; isBuiltin?: boolean; isFavorite?: boolean }>>([]);
   const isGenerating = ref(false);
+  const queueInfo = ref<{ waiting: number; active: number; isBusy: boolean } | null>(null);
+  let queuePollTimer: any = null;
+
+  const startQueuePolling = () => {
+    stopQueuePolling();
+    const poll = async () => {
+      if (!isGenerating.value) {
+        stopQueuePolling();
+        return;
+      }
+      try {
+        const headers: Record<string, string> = {};
+        if (authStore.siteAccessKey) headers['x-access-key'] = authStore.siteAccessKey;
+        if (authStore.token) headers['Authorization'] = authStore.token === '__BUILTIN__' ? '__BUILTIN__' : `Bearer ${authStore.token}`;
+        const res = await encryptedAxios({
+          method: 'GET',
+          url: '/api/queue-status',
+          headers
+        });
+        if (res.data && res.data.success) {
+          queueInfo.value = {
+            waiting: res.data.waiting,
+            active: res.data.active,
+            isBusy: res.data.isBusy
+          };
+        }
+      } catch (e) {
+        // ignore
+      }
+    };
+    poll();
+    queuePollTimer = setInterval(poll, 1000);
+  };
+
+  const stopQueuePolling = () => {
+    if (queuePollTimer) {
+      clearInterval(queuePollTimer);
+      queuePollTimer = null;
+    }
+    queueInfo.value = null;
+  };
+
   const streamPreviewUrl = ref<string | null>(null);
   const error = ref('');
   const currentImage = ref<GeneratedImage | null>(null);
@@ -550,24 +592,28 @@ export const useGenerationStore = defineStore('generation', () => {
 
     batchTotal.value = batchCount.value;
     batchCurrent.value = 1;
+    startQueuePolling();
 
-    for (let i = 0; i < batchTotal.value; i++) {
-      batchCurrent.value = i + 1;
-      
-      await generateSingleImage();
-      
-      // 如果生成过程中发生错误，终止循环
-      if (error.value) break;
+    try {
+      for (let i = 0; i < batchTotal.value; i++) {
+        batchCurrent.value = i + 1;
+        
+        await generateSingleImage();
+        
+        // 如果生成过程中发生错误，终止循环
+        if (error.value) break;
 
-      // 不是最后一张图的话，等待随机时间
-      if (i < batchTotal.value - 1) {
-        const delay = Math.random() * 500 + 500; // 0.5 - 1s
-        await new Promise(resolve => setTimeout(resolve, delay));
+        // 不是最后一张图的话，等待随机时间
+        if (i < batchTotal.value - 1) {
+          const delay = Math.random() * 500 + 500; // 0.5 - 1s
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
       }
+    } finally {
+      batchTotal.value = 0;
+      batchCurrent.value = 0;
+      stopQueuePolling();
     }
-
-    batchTotal.value = 0;
-    batchCurrent.value = 0;
   };
 
   const useParams = (historyItem: GeneratedImage) => {
@@ -697,6 +743,7 @@ export const useGenerationStore = defineStore('generation', () => {
     savedPromptGroups,
     customCharacters,
     isGenerating,
+    queueInfo,
     batchCount,
     batchTotal,
     batchCurrent,

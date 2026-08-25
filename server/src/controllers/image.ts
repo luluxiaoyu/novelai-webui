@@ -20,7 +20,7 @@ export const generateImage = async (req: Request, res: Response) => {
   const tokenKey = isBuiltin ? '__BUILTIN__' : token;
 
   try {
-    await generationQueue.enqueue(tokenKey, req, async () => {
+    await generationQueue.enqueue(tokenKey, req, res, async () => {
       const isZip = req.headers.accept === 'application/zip';
       const logBody = { ...req.body };
       if (logBody.parameters) {
@@ -83,7 +83,7 @@ export const generateImageStream = async (req: Request, res: Response) => {
   const tokenKey = isBuiltin ? '__BUILTIN__' : token;
 
   try {
-    await generationQueue.enqueue(tokenKey, req, async () => {
+    await generationQueue.enqueue(tokenKey, req, res, async () => {
       const response = await naiImageClient.post('/ai/generate-image-stream', req.body, {
         headers: {
           'Authorization': token,
@@ -119,6 +119,14 @@ export const generateImageStream = async (req: Request, res: Response) => {
     }
     return res.status(error.status || 500).json({ error: error.message || 'Internal Server Error' });
   }
+};
+
+export const getQueueStatus = async (req: Request, res: Response) => {
+  const token = resolveNovelAIToken(req);
+  const isBuiltin = (req.headers.authorization || '').includes('__BUILTIN__') || (getBuiltinToken() && token === `Bearer ${getBuiltinToken()}`);
+  const tokenKey = isBuiltin ? '__BUILTIN__' : (token || '__ANONYMOUS__');
+  const status = generationQueue.getQueueStatus(tokenKey);
+  res.json({ success: true, ...status });
 };
 
 export const suggestTags = async (req: Request, res: Response) => {

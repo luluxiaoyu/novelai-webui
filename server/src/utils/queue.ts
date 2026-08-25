@@ -1,14 +1,16 @@
-import { Request } from 'express';
+import { Request, Response } from 'express';
 import { getBuiltinConcurrency, getQueueTimeoutSeconds, getBuiltinToken } from './config';
 
 export interface QueueItem {
   id: string;
   enqueuedAt: number;
   req: Request;
+  res: Response;
   task: () => Promise<void>;
   resolve: () => void;
   reject: (err: any) => void;
   timeoutTimer?: NodeJS.Timeout;
+  cleanup?: () => void;
 }
 
 export class TokenQueueManager {
@@ -27,6 +29,7 @@ export class TokenQueueManager {
   public async enqueue(
     tokenKey: string,
     req: Request,
+    res: Response,
     task: () => Promise<void>
   ): Promise<void> {
     const queue = this.queues.get(tokenKey) || [];
@@ -43,6 +46,7 @@ export class TokenQueueManager {
         id,
         enqueuedAt: Date.now(),
         req,
+        res,
         task,
         resolve,
         reject
@@ -52,6 +56,7 @@ export class TokenQueueManager {
       if (timeoutMs > 0) {
         item.timeoutTimer = setTimeout(() => {
           if (this.removeItem(tokenKey, id)) {
+            item.cleanup?.();
             const err: any = new Error(`生图排队等待超时 (${getQueueTimeoutSeconds()}秒)，当前生图任务繁忙，请稍后重试`);
             err.status = 503;
             reject(err);
@@ -59,16 +64,21 @@ export class TokenQueueManager {
         }, timeoutMs);
       }
 
-      // 监听客户端连接主动断开 (取消排队)
+      // 监听客户端真正断开连接 (res socket close 且未写入完毕)
       const onClose = () => {
-        if (this.removeItem(tokenKey, id)) {
-          if (item.timeoutTimer) clearTimeout(item.timeoutTimer);
+        if (!res.writableEnded && !res.headersSent && this.removeItem(tokenKey, id)) {
+          item.cleanup?.();
           const err: any = new Error('Client closed connection while in queue');
           err.status = 499;
           reject(err);
         }
       };
-      req.once('close', onClose);
+      res.once('close', onClose);
+
+      item.cleanup = () => {
+        if (item.timeoutTimer) clearTimeout(item.timeoutTimer);
+        res.removeListener('close', onClose);
+      };
 
       queue.push(item);
 
@@ -107,9 +117,7 @@ export class TokenQueueManager {
     const item = queue.shift();
     if (!item) return;
 
-    if (item.timeoutTimer) {
-      clearTimeout(item.timeoutTimer);
-    }
+    item.cleanup?.();
 
     // 增加正在执行计数
     this.activeCounts.set(tokenKey, currentActive + 1);
@@ -136,10 +144,12 @@ export class TokenQueueManager {
   public getQueueStatus(tokenKey: string) {
     const queue = this.queues.get(tokenKey) || [];
     const active = this.activeCounts.get(tokenKey) || 0;
+    const maxConcurrency = this.getConcurrency(tokenKey);
     return {
       waiting: queue.length,
       active,
-      maxConcurrency: this.getConcurrency(tokenKey)
+      maxConcurrency,
+      isBusy: active >= maxConcurrency || queue.length > 0
     };
   }
 }

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { getUserSubscription, getUserData, getUserInformation } from '../controllers/user';
-import { generateImage, generateImageStream, suggestTags } from '../controllers/image';
+import { generateImage, generateImageStream, getQueueStatus, suggestTags } from '../controllers/image';
 import { getAuthStatus, verifyAccessKey } from '../controllers/auth';
 import { siteAuthMiddleware } from '../middlewares/auth';
 
@@ -16,6 +16,7 @@ router.use(siteAuthMiddleware);
 router.get('/user/subscription', getUserSubscription);
 router.get('/user/data', getUserData);
 router.get('/user/information', getUserInformation);
+router.get('/queue-status', getQueueStatus);
 
 import { webdavAction } from '../controllers/webdav';
 

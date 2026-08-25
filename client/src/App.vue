@@ -9,7 +9,7 @@ import JSZip from 'jszip';
 import CustomSelect from './components/CustomSelect.vue';
 import CharacterLibraryModal from './components/CharacterLibraryModal.vue';
 import { parsePngMetadata, type ParsedImageMetadata } from './utils/pngMetadata';
-import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud, Cloud, Wifi, Sparkles, ChevronDown, ChevronUp, RotateCcw, FileText, Plus, Minus, Users, User, UserPlus } from 'lucide-vue-next';
+import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud, Cloud, Wifi, Sparkles, ChevronDown, ChevronUp, RotateCcw, FileText, Plus, Minus, Users, User, UserPlus, Clock } from 'lucide-vue-next';
 
 const authStore = useAuthStore();
 const genStore = useGenerationStore();
@@ -1415,9 +1415,26 @@ watch(
               :disabled="genStore.isGenerating || costInfo.blockedByPermission"
               class="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-gray-800 disabled:text-gray-500 text-white font-medium py-3 rounded-xl shadow-md shadow-blue-600/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2 text-sm"
             >
-              <Loader2 v-if="genStore.isGenerating" class="animate-spin w-4 h-4" />
-              <Lock v-else-if="costInfo.blockedByPermission" class="w-4 h-4 text-amber-500" />
-              {{ genStore.isGenerating ? (genStore.batchTotal > 1 ? `正在生成 (${genStore.batchCurrent}/${genStore.batchTotal})...` : '正在生成中...') : (costInfo.blockedByPermission ? '访问密钥受限 (禁止付费参数)' : '立即生成图像') }}
+              <template v-if="genStore.isGenerating">
+                <!-- 排队中 -->
+                <template v-if="genStore.queueInfo && genStore.queueInfo.waiting > 0">
+                  <Clock class="animate-spin w-4 h-4 text-amber-300" />
+                  <span>排队中 (前方 {{ genStore.queueInfo.waiting }} 人)...</span>
+                </template>
+                <!-- 生图中 -->
+                <template v-else>
+                  <Loader2 class="animate-spin w-4 h-4" />
+                  <span>{{ genStore.batchTotal > 1 ? `正在生成 (${genStore.batchCurrent}/${genStore.batchTotal})...` : '正在生成中...' }}</span>
+                </template>
+              </template>
+              <template v-else-if="costInfo.blockedByPermission">
+                <Lock class="w-4 h-4 text-amber-500" />
+                <span>访问密钥受限 (禁止付费参数)</span>
+              </template>
+              <template v-else>
+                <Sparkles class="w-4 h-4" />
+                <span>立即生成图像</span>
+              </template>
             </button>
             <div class="w-20 shrink-0 h-full self-stretch flex">
               <CustomSelect v-model="genStore.batchCount" :options="batchOptions" placement="right" size="lg" class="h-full w-full flex items-center" />
@@ -1783,9 +1800,20 @@ watch(
               <img :src="genStore.currentImage.url" class="max-w-[85vw] max-h-[85vh] object-contain drop-shadow-2xl pointer-events-none rounded-lg" />
               
               <!-- 加载遮罩 (当正在生成且不使用流式时显示) -->
-              <div v-if="genStore.isGenerating && !genStore.streamPreviewUrl" class="absolute inset-0 bg-black/40 backdrop-blur-sm flex flex-col items-center justify-center rounded-lg z-10 text-white">
-                <Loader2 class="w-8 h-8 animate-spin mb-3" />
-                <span class="text-sm font-medium animate-pulse">正在生成图像...</span>
+              <div v-if="genStore.isGenerating && !genStore.streamPreviewUrl" class="absolute inset-0 bg-black/50 backdrop-blur-sm flex flex-col items-center justify-center rounded-lg z-10 text-white p-4 text-center">
+                <template v-if="genStore.queueInfo && genStore.queueInfo.waiting > 0">
+                  <div class="p-3 bg-amber-500/20 border border-amber-400/40 rounded-2xl flex items-center gap-2.5 mb-2 shadow-lg backdrop-blur-md">
+                    <Clock class="w-5 h-5 text-amber-300 animate-spin shrink-0" />
+                    <span class="text-sm font-semibold text-amber-200">排队等待中 (前方 {{ genStore.queueInfo.waiting }} 人)</span>
+                  </div>
+                  <span class="text-xs text-gray-300">当前共享节点正忙，系统将自动按序调度执行</span>
+                </template>
+                <template v-else>
+                  <Loader2 class="w-8 h-8 animate-spin mb-3 text-blue-400" />
+                  <span class="text-sm font-medium animate-pulse">
+                    {{ genStore.batchTotal > 1 ? `正在生成第 ${genStore.batchCurrent}/${genStore.batchTotal} 张图像...` : '正在生成图像...' }}
+                  </span>
+                </template>
               </div>
             </div>
 
@@ -1814,9 +1842,29 @@ watch(
             </div>
           </template>
 
-          <div v-else class="text-gray-400 dark:text-gray-600 flex flex-col items-center gap-3">
-            <ImageIcon class="w-16 h-16 opacity-40" />
-            <p class="text-sm font-medium">在左侧输入提示词并生成，图像将在此呈现</p>
+          <!-- 空白状态 / 生成中状态 -->
+          <div v-else class="text-gray-400 dark:text-gray-600 flex flex-col items-center justify-center gap-3">
+            <template v-if="genStore.isGenerating && !genStore.streamPreviewUrl">
+              <template v-if="genStore.queueInfo && genStore.queueInfo.waiting > 0">
+                <div class="p-3.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-2xl flex items-center gap-2.5 shadow-md">
+                  <Clock class="w-6 h-6 text-amber-500 animate-spin" />
+                  <span class="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                    排队等待中 (前方 {{ genStore.queueInfo.waiting }} 人)
+                  </span>
+                </div>
+                <span class="text-xs text-gray-500 dark:text-gray-400">已进入任务队列，轮到时将自动开始生成</span>
+              </template>
+              <template v-else>
+                <Loader2 class="w-8 h-8 animate-spin text-blue-600 dark:text-blue-400" />
+                <span class="text-sm font-medium text-gray-700 dark:text-gray-300 animate-pulse">
+                  {{ genStore.batchTotal > 1 ? `正在生成第 ${genStore.batchCurrent}/${genStore.batchTotal} 张图像...` : '正在生成图像...' }}
+                </span>
+              </template>
+            </template>
+            <template v-else>
+              <ImageIcon class="w-16 h-16 opacity-40" />
+              <p class="text-sm font-medium">在左侧输入提示词并生成，图像将在此呈现</p>
+            </template>
           </div>
         </div>
       </section>
