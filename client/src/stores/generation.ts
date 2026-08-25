@@ -86,27 +86,107 @@ const idbStorage = {
   },
 };
 
+// 多标签页跨页面同步通道
+let tabSyncChannel: BroadcastChannel | null = null;
+if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+  try {
+    tabSyncChannel = new BroadcastChannel('novelai_tab_sync');
+  } catch (e) {
+    console.warn('BroadcastChannel not supported', e);
+  }
+}
+
 export const useGenerationStore = defineStore('generation', () => {
   const authStore = useAuthStore();
   
-  // 异步加载历史
-  idbStorage.getItem('history').then((data) => {
-    if (data) {
-      try {
-        const parsed = JSON.parse(data);
-        history.value = parsed;
+  // 跨标签页合并历史并保存到 IDB
+  let isSavingIDB = false;
+  const saveHistoryToIDB = async () => {
+    if (isSavingIDB) return;
+    isSavingIDB = true;
+    try {
+      const raw = await idbStorage.getItem('history');
+      const map = new Map<string, GeneratedImage>();
+      if (raw) {
+        try {
+          const diskList: GeneratedImage[] = JSON.parse(raw);
+          diskList.forEach(item => { if (item?.id) map.set(item.id, item); });
+        } catch {}
+      }
+      history.value.forEach(item => { if (item?.id) map.set(item.id, item); });
+      const merged = Array.from(map.values()).sort((a, b) => b.timestamp - a.timestamp).slice(0, 100);
+      await idbStorage.setItem('history', JSON.stringify(merged));
+    } catch (e) {
+      console.error('Failed to save history to IDB:', e);
+    } finally {
+      isSavingIDB = false;
+    }
+  };
+
+  // 异步从 IDB 加载或合并历史
+  const loadHistoryFromIDB = async () => {
+    try {
+      const data = await idbStorage.getItem('history');
+      if (data) {
+        const diskList: GeneratedImage[] = JSON.parse(data);
+        const map = new Map<string, GeneratedImage>();
+        diskList.forEach(item => { if (item?.id) map.set(item.id, item); });
+        history.value.forEach(item => { if (item?.id) map.set(item.id, item); });
+        const merged = Array.from(map.values()).sort((a, b) => b.timestamp - a.timestamp).slice(0, 100);
+        history.value = merged;
         if (history.value.length > 0 && !currentImage.value) {
           currentImage.value = history.value[0];
         }
-      } catch (e) {
-        console.error('IDB load error', e);
       }
+    } catch (e) {
+      console.error('IDB load error', e);
     }
-  });
+  };
+
+  loadHistoryFromIDB();
+
+  // 监听多标签页同步消息
+  if (tabSyncChannel) {
+    tabSyncChannel.onmessage = (event) => {
+      const msg = event.data;
+      if (!msg || !msg.type) return;
+
+      if (msg.type === 'ADD_IMAGE' && msg.image) {
+        const incoming: GeneratedImage = msg.image;
+        if (!history.value.some(h => h.id === incoming.id)) {
+          history.value.unshift(incoming);
+          if (history.value.length > 100) history.value.pop();
+        }
+      } else if (msg.type === 'DELETE_IMAGE' && msg.id) {
+        history.value = history.value.filter(h => h.id !== msg.id);
+        if (currentImage.value?.id === msg.id) {
+          currentImage.value = history.value.length > 0 ? history.value[0] : null;
+        }
+      } else if (msg.type === 'CLEAR_HISTORY') {
+        history.value = [];
+        currentImage.value = null;
+      } else if (msg.type === 'KEEP_IMAGES' && Array.isArray(msg.ids)) {
+        const idSet = new Set(msg.ids);
+        history.value = history.value.filter(item => idSet.has(item.id));
+        if (currentImage.value && !idSet.has(currentImage.value.id)) {
+          currentImage.value = history.value.length > 0 ? history.value[0] : null;
+        }
+      }
+    };
+  }
+
+  // 页面切回前台时，自动从 IDB 重新校验增量
+  if (typeof window !== 'undefined') {
+    window.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        loadHistoryFromIDB();
+      }
+    });
+  }
 
   import('vue').then(({ watch }) => {
-    watch(history, (newVal) => {
-      idbStorage.setItem('history', JSON.stringify(newVal));
+    watch(history, () => {
+      saveHistoryToIDB();
     }, { deep: true });
   });
 
@@ -424,15 +504,13 @@ export const useGenerationStore = defineStore('generation', () => {
                         if (isFinal) {
                           const finalUrl = `data:image/png;base64,${b64}`;
                           const generated: GeneratedImage = {
-                            id: Date.now().toString(),
+                            id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
                             url: finalUrl,
                             params: JSON.parse(JSON.stringify({...params, seed: seedToUse})),
                             timestamp: Date.now(),
                             isNew: batchTotal.value > 1
                           };
-                          currentImage.value = generated;
-                          history.value.unshift(generated);
-                          useWebDAVStore().autoSyncSingle(useGenerationStore(), generated);
+                          pushGeneratedImage(generated);
                           streamPreviewUrl.value = null;
                           streamResultSaved = true;
                         } else {
@@ -452,15 +530,13 @@ export const useGenerationStore = defineStore('generation', () => {
           // 如果流结束了但我们没有捕获到 final 事件，把最后一张预览图作为最终结果保存
           if (!streamResultSaved && streamPreviewUrl.value) {
             const generated: GeneratedImage = {
-              id: Date.now().toString(),
+              id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
               url: streamPreviewUrl.value,
               params: JSON.parse(JSON.stringify({...params, seed: seedToUse})),
               timestamp: Date.now(),
               isNew: batchTotal.value > 1
             };
-            currentImage.value = generated;
-            history.value.unshift(generated);
-            useWebDAVStore().autoSyncSingle(useGenerationStore(), generated);
+            pushGeneratedImage(generated);
           }
         } finally {
           clearTimeout(timeoutId);
@@ -486,18 +562,14 @@ export const useGenerationStore = defineStore('generation', () => {
           const dataUrl = `data:image/png;base64,${base64Data}`;
           
           const generated: GeneratedImage = {
-            id: Date.now().toString(),
+            id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
             url: dataUrl,
             params: JSON.parse(JSON.stringify({...params, seed: seedToUse})),
             timestamp: Date.now(),
             isNew: batchTotal.value > 1
           };
           
-          currentImage.value = generated;
-          history.value.unshift(generated);
-          useWebDAVStore().autoSyncSingle(useGenerationStore(), generated);
-          // 保留最多 100 张历史图
-          if (history.value.length > 100) history.value.pop();
+          pushGeneratedImage(generated);
         } else {
           throw new Error('未在返回的压缩包中找到图像文件');
         }
@@ -666,11 +738,35 @@ export const useGenerationStore = defineStore('generation', () => {
     }
   };
 
+  const pushGeneratedImage = (generated: GeneratedImage) => {
+    // 检查是否已在列表中
+    if (!history.value.some(h => h.id === generated.id)) {
+      history.value.unshift(generated);
+      if (history.value.length > 100) history.value.pop();
+    }
+    currentImage.value = generated;
+    saveHistoryToIDB();
+    useWebDAVStore().autoSyncSingle(useGenerationStore(), generated);
+    if (tabSyncChannel) {
+      try {
+        tabSyncChannel.postMessage({ type: 'ADD_IMAGE', image: generated });
+      } catch (e) {
+        console.warn('Broadcast tab sync failed:', e);
+      }
+    }
+  };
+
   const deleteHistory = (id: string) => {
     const item = history.value.find(i => i.id === id);
     history.value = history.value.filter(i => i.id !== id);
     if (currentImage.value?.id === id) {
       currentImage.value = history.value.length > 0 ? history.value[0] : null;
+    }
+    saveHistoryToIDB();
+    if (tabSyncChannel) {
+      try {
+        tabSyncChannel.postMessage({ type: 'DELETE_IMAGE', id });
+      } catch (e) {}
     }
     if (item) {
       useWebDAVStore().autoSyncDeleteImage(item.id, item.timestamp, useGenerationStore());
@@ -725,13 +821,26 @@ export const useGenerationStore = defineStore('generation', () => {
   const clearHistory = () => {
     history.value = [];
     currentImage.value = null;
+    saveHistoryToIDB();
+    if (tabSyncChannel) {
+      try {
+        tabSyncChannel.postMessage({ type: 'CLEAR_HISTORY' });
+      } catch (e) {}
+    }
     useWebDAVStore().autoSyncMetadata(useGenerationStore());
   };
 
   const clearFilteredHistory = (idsToKeep: string[]) => {
-    history.value = history.value.filter(item => idsToKeep.includes(item.id));
-    if (currentImage.value && !idsToKeep.includes(currentImage.value.id)) {
+    const idSet = new Set(idsToKeep);
+    history.value = history.value.filter(item => idSet.has(item.id));
+    if (currentImage.value && !idSet.has(currentImage.value.id)) {
       currentImage.value = history.value.length > 0 ? history.value[0] : null;
+    }
+    saveHistoryToIDB();
+    if (tabSyncChannel) {
+      try {
+        tabSyncChannel.postMessage({ type: 'KEEP_IMAGES', ids: idsToKeep });
+      } catch (e) {}
     }
     useWebDAVStore().autoSyncMetadata(useGenerationStore());
   };
