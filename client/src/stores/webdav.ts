@@ -427,6 +427,8 @@ export const useWebDAVStore = defineStore('webdav', () => {
 
   const autoSyncSingle = async (genStore: any, img: any) => {
     if (!autoSync.value) return;
+    // 如果用户在上传开始前就已经删除了该图，直接中止
+    if (!genStore.history.some((h: any) => h.id === img.id)) return;
     try {
       const profilePath = _getProfilePath();
       const dateFolder = new Date(img.timestamp).toISOString().split('T')[0];
@@ -437,6 +439,12 @@ export const useWebDAVStore = defineStore('webdav', () => {
       const b64Data = img.url.replace(/^data:image\/png;base64,/, '');
       await executeAction('putFileContents', filePath, b64Data);
       
+      // 如果用户在上传过程中删除了该图，立即删除云端刚上传的遗留文件并中止
+      if (!genStore.history.some((h: any) => h.id === img.id)) {
+        try { await executeAction('deleteFile', filePath); } catch (e) {}
+        return;
+      }
+
       await autoSyncMetadata(genStore);
     } catch (e) {
       console.warn('Auto-sync single image failed:', e);
