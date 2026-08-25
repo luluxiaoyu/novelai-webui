@@ -318,7 +318,7 @@ onUnmounted(() => {
       :rows="rows" 
       :placeholder="placeholder"
       :class="[
-        'w-full bg-gray-50 dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-xl p-3 text-xs outline-none focus:ring-2 focus:ring-blue-500 custom-scrollbar transition-colors',
+        'w-full bg-gray-50 dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-xl p-3 text-[13.5px] sm:text-sm leading-relaxed outline-none focus:ring-2 focus:ring-blue-500 custom-scrollbar transition-colors',
         resizable ? 'resize-y' : 'resize-none',
         textareaClass
       ]"

@@ -1508,7 +1508,7 @@ watch(
                     storage-key="character_prompt"
                     :min-height="55"
                     :placeholder="`角色 ${idx + 1} 特征 (如 1girl, nahida, dress, blonde hair, green eyes...)`"
-                    textarea-class="p-2 border-gray-200 dark:border-gray-800 rounded-lg focus:ring-1"
+                    textarea-class="p-2.5 border-gray-200 dark:border-gray-800 rounded-lg focus:ring-1 text-[13px] sm:text-[13.5px] leading-relaxed"
                   />
                 </div>
 
@@ -1517,7 +1517,7 @@ watch(
                   <input 
                     v-model="char.uc" 
                     type="text"
-                    class="w-full bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg px-2.5 py-1.5 text-[11px] outline-none focus:ring-1 focus:ring-blue-500 font-mono text-gray-500 dark:text-gray-400" 
+                    class="w-full bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg px-2.5 py-1.5 text-xs sm:text-[13px] outline-none focus:ring-1 focus:ring-blue-500 text-gray-600 dark:text-gray-400" 
                     :placeholder="`角色 ${idx + 1} 独立负向词 (可选，如 bad hands, lowres...)`"
                   />
                 </div>

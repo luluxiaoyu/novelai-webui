@@ -285,7 +285,7 @@ const handleCopy = async (text: string, type: string) => {
             v-model="draftPrompt" 
             :rows="7" 
             placeholder="输入正向提示词，如 1girl, masterpiece, best quality, highly detailed, expressive eyes, vibrant colors, cinematic lighting..."
-            textarea-class="bg-white dark:bg-gray-900 text-xs sm:text-sm leading-relaxed"
+            textarea-class="bg-white dark:bg-gray-900 text-[13.5px] sm:text-sm leading-relaxed"
           />
         </div>
 
@@ -335,7 +335,7 @@ const handleCopy = async (text: string, type: string) => {
             v-model="draftNegativePrompt" 
             :rows="3" 
             placeholder="输入反向提示词，如 lowres, bad anatomy, bad hands, text, error, missing fingers, extra digits..."
-            textarea-class="bg-white dark:bg-gray-900 text-xs leading-relaxed text-gray-600 dark:text-gray-400"
+            textarea-class="bg-white dark:bg-gray-900 text-[13px] sm:text-[13.5px] leading-relaxed text-gray-600 dark:text-gray-400"
           />
         </div>
 
@@ -445,7 +445,7 @@ const handleCopy = async (text: string, type: string) => {
                   storage-key="modal_character_prompt"
                   :min-height="55"
                   :placeholder="`角色 ${idx + 1} 外貌与动作特征 (如 1girl, nahida, green eyes, dress...)`"
-                  textarea-class="bg-gray-50 dark:bg-gray-950 p-2 text-xs"
+                  textarea-class="bg-gray-50 dark:bg-gray-950 p-2.5 text-[13px] sm:text-[13.5px] leading-relaxed"
                 />
               </div>
 
@@ -456,7 +456,7 @@ const handleCopy = async (text: string, type: string) => {
                   v-model="char.uc" 
                   type="text" 
                   :placeholder="`角色 ${idx + 1} 独立负向词 (如 bad hands, lowres...)`"
-                  class="w-full bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-xl px-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-blue-500 font-mono text-gray-600 dark:text-gray-400"
+                  class="w-full bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-xl px-3 py-2 text-xs sm:text-[13px] outline-none focus:ring-1 focus:ring-blue-500 text-gray-600 dark:text-gray-400"
                 />
               </div>
 
