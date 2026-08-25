@@ -1382,15 +1382,15 @@ watch(
           <!-- V4 / V4.5 / V5 多角色定位与专属提示词 (Character Prompts) -->
           <div v-if="!isV3" class="flex flex-col gap-2 p-3 bg-blue-50/60 dark:bg-blue-950/20 rounded-2xl border border-blue-100 dark:border-blue-900/40">
             <div class="flex items-center justify-between gap-2">
-              <div class="flex items-center gap-1.5 min-w-0">
+              <div class="flex items-center gap-1.5 shrink-0">
                 <Users class="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
-                <span class="text-xs font-bold text-gray-700 dark:text-gray-200 truncate">多角色提示词</span>
+                <span class="text-xs font-bold text-gray-700 dark:text-gray-200">多角色提示词</span>
                 <span class="text-[10px] bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-mono px-1.5 py-0.2 rounded-full font-semibold shrink-0">
                   {{ genStore.params.characters?.length || 0 }}
                 </span>
               </div>
 
-              <div class="flex items-center gap-2 shrink-0">
+              <div class="flex items-center gap-1.5 shrink-0">
                 <!-- 快捷打开角色库 -->
                 <button 
                   @click="showCharacterLibrary = true" 
@@ -1401,26 +1401,6 @@ watch(
                   <span>角色库</span>
                 </button>
 
-                <!-- 空间位置定位 Toggle Switch -->
-                <div v-if="(genStore.params.characters?.length || 0) > 0" class="flex items-center gap-1.5">
-                  <span class="text-[11px] text-gray-500 dark:text-gray-400 select-none font-medium">位置定位</span>
-                  <button 
-                    type="button" 
-                    role="switch" 
-                    :aria-checked="genStore.params.use_coords" 
-                    @click="genStore.params.use_coords = !genStore.params.use_coords" 
-                    class="relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-none" 
-                    :class="genStore.params.use_coords ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-700'"
-                    title="是否启用 2D 坐标位置定位"
-                  >
-                    <span 
-                      aria-hidden="true" 
-                      class="pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out my-0.5" 
-                      :class="genStore.params.use_coords ? 'translate-x-3.5' : 'translate-x-0.5'" 
-                    />
-                  </button>
-                </div>
-
                 <button 
                   @click="genStore.addCharacter" 
                   class="text-xs bg-blue-600 hover:bg-blue-700 text-white font-medium px-2.5 py-1 rounded-lg transition shadow-sm shadow-blue-500/20 flex items-center gap-1 shrink-0 active:scale-95"
@@ -1430,6 +1410,29 @@ watch(
                   <span>+ 角色</span>
                 </button>
               </div>
+            </div>
+
+            <!-- 空间位置定位 Toggle Sub-bar (仅在有角色时展示) -->
+            <div v-if="(genStore.params.characters?.length || 0) > 0" class="flex items-center justify-between pt-1.5 pb-0.5 border-t border-blue-100/70 dark:border-blue-900/40 text-[11px]">
+              <div class="flex items-center gap-1.5 text-gray-600 dark:text-gray-400 font-medium">
+                <MapPin class="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                <span>2D 空间坐标定位</span>
+              </div>
+              <button 
+                type="button" 
+                role="switch" 
+                :aria-checked="genStore.params.use_coords" 
+                @click="genStore.params.use_coords = !genStore.params.use_coords" 
+                class="relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-none" 
+                :class="genStore.params.use_coords ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-700'"
+                title="是否启用 2D 坐标位置定位"
+              >
+                <span 
+                  aria-hidden="true" 
+                  class="pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out my-0.5" 
+                  :class="genStore.params.use_coords ? 'translate-x-3.5' : 'translate-x-0.5'" 
+                />
+              </button>
             </div>
 
             <!-- 角色卡片列表 -->
