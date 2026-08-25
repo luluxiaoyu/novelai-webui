@@ -221,6 +221,7 @@ export const useGenerationStore = defineStore('generation', () => {
   const customCharacters = ref<Array<{ id: string; name: string; category: string; prompt: string; uc?: string; isBuiltin?: boolean; isFavorite?: boolean }>>([]);
   const customStyles = ref<Array<{ id: string; name: string; category: string; prompt: string; uc?: string; isFavorite?: boolean }>>([]);
   const enableTagSuggestions = ref(false);
+  const enableStreamThrottle = ref(false);
   const isGenerating = ref(false);
   const queueInfo = ref<{ waiting: number; active: number; isBusy: boolean } | null>(null);
   let queuePollTimer: any = null;
@@ -431,6 +432,7 @@ export const useGenerationStore = defineStore('generation', () => {
       if (params.enable_stream) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 120000);
+        let activeBlobUrl: string | null = null;
 
         try {
           const fetchHeaders: Record<string, string> = {
@@ -458,8 +460,29 @@ export const useGenerationStore = defineStore('generation', () => {
           const reader = response.body?.getReader();
           const decoder = new TextDecoder();
           let buffer = '';
-
           let streamResultSaved = false;
+          let lastRenderTime = 0;
+          const THROTTLE_INTERVAL_MS = 125; // 开启节流时限制最大约 8fps
+
+          const updateStreamPreviewBlob = (b64Data: string) => {
+            try {
+              const binStr = atob(b64Data);
+              const len = binStr.length;
+              const bytes = new Uint8Array(len);
+              for (let i = 0; i < len; i++) {
+                bytes[i] = binStr.charCodeAt(i);
+              }
+              const blob = new Blob([bytes], { type: 'image/png' });
+              const newUrl = URL.createObjectURL(blob);
+              if (activeBlobUrl) {
+                URL.revokeObjectURL(activeBlobUrl);
+              }
+              activeBlobUrl = newUrl;
+              streamPreviewUrl.value = newUrl;
+            } catch (e) {
+              streamPreviewUrl.value = `data:image/png;base64,${b64Data}`;
+            }
+          };
 
           if (reader) {
             while (true) {
@@ -467,63 +490,75 @@ export const useGenerationStore = defineStore('generation', () => {
               if (done) break;
               buffer += decoder.decode(value, { stream: true });
               
-              const lines = buffer.split('\n');
-              buffer = lines.pop() || '';
+              let newlineIdx = buffer.indexOf('\n');
+              while (newlineIdx !== -1) {
+                const line = buffer.slice(0, newlineIdx).trim();
+                buffer = buffer.slice(newlineIdx + 1);
+                newlineIdx = buffer.indexOf('\n');
 
-              for (const line of lines) {
-                if (line.startsWith('data:')) {
-                  const dataStr = line.replace('data:', '').trim();
-                  if (dataStr) {
-                    try {
-                      const parsed = JSON.parse(dataStr);
-                      const eventType = parsed.event_type || parsed.event;
-                      
-                      // 智能提取 base64
-                      let b64 = parsed.document || parsed.b64 || parsed.image || parsed.ptr;
-                      if (!b64) {
-                        for (const key in parsed) {
-                          if (typeof parsed[key] === 'string' && parsed[key].length > 500) {
-                            b64 = parsed[key];
-                            break;
-                          }
-                        }
+                if (!line.startsWith('data:')) continue;
+                const dataStr = line.slice(5).trim();
+                if (!dataStr) continue;
+
+                try {
+                  const parsed = JSON.parse(dataStr);
+                  const eventType = parsed.event_type || parsed.event;
+                  
+                  // 智能提取 base64
+                  let b64 = parsed.document || parsed.b64 || parsed.image || parsed.ptr;
+                  if (!b64) {
+                    for (const key in parsed) {
+                      if (typeof parsed[key] === 'string' && parsed[key].length > 500) {
+                        b64 = parsed[key];
+                        break;
                       }
-
-                      if (b64) {
-                        if (b64.startsWith('UEsDB')) {
-                          const zip = new JSZip();
-                          const loadedZip = await zip.loadAsync(b64, { base64: true });
-                          const files = Object.keys(loadedZip.files);
-                          if (files.length > 0) {
-                            const file = loadedZip.files[files[0]];
-                            b64 = await file.async('base64');
-                          }
-                        }
-
-                        // 如果明确是 final，或者包含 success 等最终标识
-                        const isFinal = eventType === 'final' || eventType === 'done' || parsed.success === true;
-                        
-                        if (isFinal) {
-                          const finalUrl = `data:image/png;base64,${b64}`;
-                          const generated: GeneratedImage = {
-                            id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-                            url: finalUrl,
-                            params: JSON.parse(JSON.stringify({...params, seed: seedToUse})),
-                            timestamp: Date.now(),
-                            isNew: batchTotal.value > 1
-                          };
-                          pushGeneratedImage(generated);
-                          streamPreviewUrl.value = null;
-                          streamResultSaved = true;
-                        } else {
-                          // 当作中间帧展示
-                          streamPreviewUrl.value = `data:image/png;base64,${b64}`;
-                        }
-                      }
-                    } catch (e) {
-                      console.warn('Failed to parse stream chunk');
                     }
                   }
+
+                  if (b64) {
+                    if (b64.startsWith('UEsDB')) {
+                      const zip = new JSZip();
+                      const loadedZip = await zip.loadAsync(b64, { base64: true });
+                      const files = Object.keys(loadedZip.files);
+                      if (files.length > 0) {
+                        const file = loadedZip.files[files[0]];
+                        b64 = await file.async('base64');
+                      }
+                    }
+
+                    // 如果明确是 final，或者包含 success 等最终标识
+                    const isFinal = eventType === 'final' || eventType === 'done' || parsed.success === true;
+                    
+                    if (isFinal) {
+                      const finalUrl = `data:image/png;base64,${b64}`;
+                      const generated: GeneratedImage = {
+                        id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                        url: finalUrl,
+                        params: JSON.parse(JSON.stringify({...params, seed: seedToUse})),
+                        timestamp: Date.now(),
+                        isNew: batchTotal.value > 1
+                      };
+                      pushGeneratedImage(generated);
+                      if (activeBlobUrl) {
+                        URL.revokeObjectURL(activeBlobUrl);
+                        activeBlobUrl = null;
+                      }
+                      streamPreviewUrl.value = null;
+                      streamResultSaved = true;
+                    } else {
+                      // 如果开启了节流开关，跳过过于密集的中间帧渲染以保护低配设备显存
+                      if (enableStreamThrottle.value) {
+                        const now = performance.now();
+                        if (now - lastRenderTime < THROTTLE_INTERVAL_MS) {
+                          continue;
+                        }
+                        lastRenderTime = now;
+                      }
+                      updateStreamPreviewBlob(b64);
+                    }
+                  }
+                } catch (e) {
+                  console.warn('Failed to parse stream chunk');
                 }
               }
             }
@@ -542,6 +577,10 @@ export const useGenerationStore = defineStore('generation', () => {
           }
         } finally {
           clearTimeout(timeoutId);
+          if (activeBlobUrl) {
+            URL.revokeObjectURL(activeBlobUrl);
+            activeBlobUrl = null;
+          }
           streamPreviewUrl.value = null;
         }
       } else {
@@ -855,6 +894,7 @@ export const useGenerationStore = defineStore('generation', () => {
     customCharacters,
     customStyles,
     enableTagSuggestions,
+    enableStreamThrottle,
     isGenerating,
     queueInfo,
     batchCount,
@@ -882,7 +922,7 @@ export const useGenerationStore = defineStore('generation', () => {
 }, {
   persist: [
     {
-      pick: ['params', 'promptHistory', 'savedPromptGroups', 'customCharacters', 'customStyles', 'enableTagSuggestions'],
+      pick: ['params', 'promptHistory', 'savedPromptGroups', 'customCharacters', 'customStyles', 'enableTagSuggestions', 'enableStreamThrottle'],
       storage: localStorage
     },
     {

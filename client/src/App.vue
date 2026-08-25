@@ -1577,7 +1577,7 @@ watch(
             </div>
           </div>
 
-          <div class="flex flex-col gap-3 pt-3 border-t border-gray-200 dark:border-gray-800">
+          <div class="flex flex-col gap-2.5 pt-3 border-t border-gray-200 dark:border-gray-800">
             <div class="flex items-center justify-between cursor-pointer group" @click="genStore.params.enable_stream = !genStore.params.enable_stream" title="允许服务器边画边给你传模糊过程图">
               <span class="text-xs font-medium text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-gray-100 transition-colors">流式生成 (实时预览)</span>
               <button 
@@ -1587,6 +1587,28 @@ watch(
                 <span 
                   class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
                   :class="genStore.params.enable_stream ? 'translate-x-2' : '-translate-x-2'"
+                />
+              </button>
+            </div>
+
+            <!-- 流式低内存节流模式 (默认关闭，用户可选开启以保护移动端/低内存设备) -->
+            <div 
+              v-if="genStore.params.enable_stream" 
+              class="flex items-center justify-between cursor-pointer group pl-2 py-1 bg-gray-50/50 dark:bg-gray-800/30 rounded-lg pr-1.5 transition animate-fade-in"
+              @click="genStore.enableStreamThrottle = !genStore.enableStreamThrottle"
+              title="开启后限制流式预览最高刷新帧率（约 8fps），显著降低手机/平板的显存解码负荷，防止浏览器内存溢出 (OOM)"
+            >
+              <div class="flex flex-col">
+                <span class="text-[11px] font-medium text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200 transition-colors">低内存节流模式</span>
+                <span class="text-[10px] text-gray-400">限制帧率防 OOM 崩溃 (默认关)</span>
+              </div>
+              <button 
+                class="relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors focus:outline-none"
+                :class="genStore.enableStreamThrottle ? 'bg-amber-600' : 'bg-gray-200 dark:bg-gray-700'"
+              >
+                <span 
+                  class="pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                  :class="genStore.enableStreamThrottle ? 'translate-x-1.5' : '-translate-x-1.5'"
                 />
               </button>
             </div>
