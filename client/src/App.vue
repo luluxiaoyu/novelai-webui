@@ -8,7 +8,7 @@ import { useDark, useToggle } from '@vueuse/core';
 import JSZip from 'jszip';
 import CustomSelect from './components/CustomSelect.vue';
 import { parsePngMetadata, type ParsedImageMetadata } from './utils/pngMetadata';
-import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud, Cloud, Wifi, Sparkles, ChevronDown, ChevronUp, RotateCcw, FileText, Plus, Minus } from 'lucide-vue-next';
+import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud, Cloud, Wifi, Sparkles, ChevronDown, ChevronUp, RotateCcw, FileText, Plus, Minus, Users, User, UserPlus } from 'lucide-vue-next';
 
 const authStore = useAuthStore();
 const genStore = useGenerationStore();
@@ -653,6 +653,12 @@ const applyDropAction = (action: 'inpaint' | 'img2img' | 'metadata') => {
     if (metadata.cfg_rescale !== undefined) genStore.params.cfg_rescale = metadata.cfg_rescale;
     if (metadata.uncond_scale !== undefined) genStore.params.uncond_scale = metadata.uncond_scale;
     if (metadata.skip_cfg_above_sigma !== undefined) genStore.params.skip_cfg_above_sigma = metadata.skip_cfg_above_sigma;
+    if (metadata.characters) {
+      genStore.params.characters = JSON.parse(JSON.stringify(metadata.characters));
+    }
+    if (metadata.use_coords !== undefined) {
+      genStore.params.use_coords = metadata.use_coords;
+    }
   }
 
   showDropActionModal.value = false;
@@ -1197,6 +1203,172 @@ watch(
               class="w-full bg-gray-50 dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-xl p-3 text-xs outline-none focus:ring-2 focus:ring-blue-500 resize-none font-mono text-gray-500 dark:text-gray-400 custom-scrollbar transition-colors" 
               placeholder="lowres, bad anatomy, bad hands, text, error, missing fingers..."
             ></textarea>
+          </div>
+
+          <!-- V4 / V4.5 / V5 多角色定位与专属提示词 (Character Prompts) -->
+          <div v-if="!isV3" class="flex flex-col gap-2 p-3 bg-blue-50/60 dark:bg-blue-950/20 rounded-2xl border border-blue-100 dark:border-blue-900/40">
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-1.5 min-w-0">
+                <Users class="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                <span class="text-xs font-bold text-gray-700 dark:text-gray-200 truncate">多角色提示词</span>
+                <span class="text-[10px] bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-mono px-1.5 py-0.2 rounded-full font-semibold shrink-0">
+                  {{ genStore.params.characters?.length || 0 }}
+                </span>
+              </div>
+
+              <div class="flex items-center gap-2 shrink-0">
+                <!-- 空间位置定位 Toggle Switch -->
+                <div v-if="(genStore.params.characters?.length || 0) > 0" class="flex items-center gap-1.5">
+                  <span class="text-[11px] text-gray-500 dark:text-gray-400 select-none font-medium">位置定位</span>
+                  <button 
+                    type="button" 
+                    role="switch" 
+                    :aria-checked="genStore.params.use_coords" 
+                    @click="genStore.params.use_coords = !genStore.params.use_coords" 
+                    class="relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-none" 
+                    :class="genStore.params.use_coords ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-700'"
+                    title="是否启用 2D 坐标位置定位"
+                  >
+                    <span 
+                      aria-hidden="true" 
+                      class="pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out my-0.5" 
+                      :class="genStore.params.use_coords ? 'translate-x-3.5' : 'translate-x-0.5'" 
+                    />
+                  </button>
+                </div>
+
+                <button 
+                  @click="genStore.addCharacter" 
+                  class="text-xs bg-blue-600 hover:bg-blue-700 text-white font-medium px-2.5 py-1 rounded-lg transition shadow-sm shadow-blue-500/20 flex items-center gap-1 shrink-0 active:scale-95"
+                  title="添加一个新角色"
+                >
+                  <UserPlus class="w-3.5 h-3.5" />
+                  <span>+ 角色</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- 角色卡片列表 -->
+            <div v-if="genStore.params.characters && genStore.params.characters.length > 0" class="flex flex-col gap-2.5 mt-1">
+              <div 
+                v-for="(char, idx) in genStore.params.characters" 
+                :key="char.id" 
+                class="bg-white dark:bg-gray-900 border rounded-xl p-3 shadow-xs flex flex-col gap-2.5 transition-all"
+                :class="char.enabled !== false ? 'border-blue-200/80 dark:border-blue-800/80' : 'border-gray-200 dark:border-gray-800 opacity-60'"
+              >
+                <!-- 角色卡片头部 -->
+                <div class="flex items-center justify-between gap-2">
+                  <div class="flex items-center gap-2">
+                    <!-- 角色启用 Toggle Button -->
+                    <button 
+                      type="button" 
+                      role="switch" 
+                      :aria-checked="char.enabled !== false" 
+                      @click="char.enabled = char.enabled === false ? true : false" 
+                      class="relative inline-flex h-3.5 w-6 shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-none" 
+                      :class="char.enabled !== false ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-700'"
+                      :title="char.enabled !== false ? '已启用该角色' : '已禁用该角色'"
+                    >
+                      <span 
+                        aria-hidden="true" 
+                        class="pointer-events-none inline-block h-2.5 w-2.5 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out my-0.5" 
+                        :class="char.enabled !== false ? 'translate-x-3' : 'translate-x-0.5'" 
+                      />
+                    </button>
+
+                    <span class="text-xs font-bold text-gray-800 dark:text-gray-200 flex items-center gap-1">
+                      <User class="w-3 h-3 text-blue-500" />
+                      角色 {{ idx + 1 }}
+                    </span>
+                  </div>
+
+                  <div class="flex items-center gap-1.5">
+                    <!-- 快捷方位预设 (仅在启用位置定位时展示) -->
+                    <div v-if="genStore.params.use_coords" class="flex items-center bg-gray-100 dark:bg-gray-800 rounded-md p-0.5 text-[10px]">
+                      <button 
+                        @click="char.center = { x: 0.3, y: 0.5 }" 
+                        class="px-1.5 py-0.5 rounded transition font-medium"
+                        :class="char.center?.x <= 0.35 ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 font-bold shadow-xs' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'"
+                        title="预设：左侧 (X: 0.3)"
+                      >左</button>
+                      <button 
+                        @click="char.center = { x: 0.5, y: 0.5 }" 
+                        class="px-1.5 py-0.5 rounded transition font-medium"
+                        :class="char.center?.x > 0.35 && char.center?.x < 0.65 ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 font-bold shadow-xs' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'"
+                        title="预设：居中 (X: 0.5)"
+                      >中</button>
+                      <button 
+                        @click="char.center = { x: 0.7, y: 0.5 }" 
+                        class="px-1.5 py-0.5 rounded transition font-medium"
+                        :class="char.center?.x >= 0.65 ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 font-bold shadow-xs' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'"
+                        title="预设：右侧 (X: 0.7)"
+                      >右</button>
+                    </div>
+
+                    <button 
+                      @click="genStore.removeCharacter(char.id)" 
+                      class="text-gray-400 hover:text-red-600 p-1 rounded-md hover:bg-red-50 dark:hover:bg-red-950/40 transition"
+                      title="删除此角色"
+                    >
+                      <Trash2 class="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                <!-- 角色专属 Prompt -->
+                <div>
+                  <textarea 
+                    v-model="char.prompt" 
+                    rows="2" 
+                    class="w-full bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg p-2 text-xs outline-none focus:ring-1 focus:ring-blue-500 resize-none font-mono custom-scrollbar" 
+                    :placeholder="`角色 ${idx + 1} 特征 (如 1girl, nahida, dress, blonde hair, green eyes...)`"
+                  ></textarea>
+                </div>
+
+                <!-- 角色专属 UC (可选单行) -->
+                <div>
+                  <input 
+                    v-model="char.uc" 
+                    type="text"
+                    class="w-full bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg px-2.5 py-1.5 text-[11px] outline-none focus:ring-1 focus:ring-blue-500 font-mono text-gray-500 dark:text-gray-400" 
+                    :placeholder="`角色 ${idx + 1} 独立负向词 (可选，如 bad hands, lowres...)`"
+                  />
+                </div>
+
+                <!-- 坐标微调滑块 (仅在启用位置定位时展示) -->
+                <div v-if="genStore.params.use_coords" class="pt-1.5 border-t border-gray-100 dark:border-gray-800/80 grid grid-cols-2 gap-2 text-[11px] text-gray-500">
+                  <div class="flex items-center gap-1.5 bg-gray-50 dark:bg-gray-950/60 px-2 py-1 rounded-lg border border-gray-100 dark:border-gray-800">
+                    <span class="font-mono text-gray-600 dark:text-gray-400 shrink-0 font-medium">X:</span>
+                    <input 
+                      type="range" 
+                      v-model.number="char.center.x" 
+                      min="0.1" 
+                      max="0.9" 
+                      step="0.05" 
+                      class="w-full accent-blue-600 h-1 bg-gray-200 dark:bg-gray-700 rounded cursor-pointer" 
+                    />
+                    <span class="font-mono text-[10px] w-6 text-right shrink-0">{{ Number(char.center?.x || 0.5).toFixed(2) }}</span>
+                  </div>
+
+                  <div class="flex items-center gap-1.5 bg-gray-50 dark:bg-gray-950/60 px-2 py-1 rounded-lg border border-gray-100 dark:border-gray-800">
+                    <span class="font-mono text-gray-600 dark:text-gray-400 shrink-0 font-medium">Y:</span>
+                    <input 
+                      type="range" 
+                      v-model.number="char.center.y" 
+                      min="0.1" 
+                      max="0.9" 
+                      step="0.05" 
+                      class="w-full accent-blue-600 h-1 bg-gray-200 dark:bg-gray-700 rounded cursor-pointer" 
+                    />
+                    <span class="font-mono text-[10px] w-6 text-right shrink-0">{{ Number(char.center?.y || 0.5).toFixed(2) }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div v-else class="text-[11px] text-gray-400 dark:text-gray-500 py-1 text-center">
+              点击右上角 "+ 角色" 为每个角色独立设定外貌特征
+            </div>
           </div>
 
           <!-- 生成按钮与点数消耗/免费状态提示 -->

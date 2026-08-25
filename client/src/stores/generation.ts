@@ -5,6 +5,14 @@ import JSZip from 'jszip';
 import { useAuthStore } from './auth';
 import { useWebDAVStore } from './webdav';
 
+export interface CharacterPrompt {
+  id: string;
+  prompt: string;
+  uc?: string;
+  center: { x: number; y: number };
+  enabled?: boolean;
+}
+
 export interface GenerationParams {
   prompt: string;
   negative_prompt: string;
@@ -25,6 +33,9 @@ export interface GenerationParams {
   uncond_scale: number;
   skip_cfg_above_sigma: number | null;
   prefer_brownian: boolean;
+  // Character Prompts (V4, V4.5, V5)
+  characters?: CharacterPrompt[];
+  use_coords?: boolean;
   // Inpaint / Img2img
   image?: string; // Base64
   mask?: string;  // Base64
@@ -120,6 +131,8 @@ export const useGenerationStore = defineStore('generation', () => {
     prefer_brownian: true,
     strength: 0.7,
     noise: 0.0,
+    characters: [],
+    use_coords: false,
   });
 
   const history = ref<GeneratedImage[]>([]);
@@ -217,21 +230,45 @@ export const useGenerationStore = defineStore('generation', () => {
         const negPrompt = params.negative_prompt || '';
         parameters.uc = negPrompt;
 
+        // 提取有效且已启用的角色提示词
+        const activeChars = (params.characters || []).filter(c => c.enabled !== false && c.prompt && c.prompt.trim());
+        const charCaptions = activeChars.map(c => ({
+          char_caption: c.prompt.trim(),
+          centers: [
+            {
+              x: Math.max(0, Math.min(1, typeof c.center?.x === 'number' ? c.center.x : 0.5)),
+              y: Math.max(0, Math.min(1, typeof c.center?.y === 'number' ? c.center.y : 0.5))
+            }
+          ]
+        }));
+
+        const charUcCaptions = activeChars.map(c => ({
+          char_caption: (c.uc || '').trim(),
+          centers: [
+            {
+              x: Math.max(0, Math.min(1, typeof c.center?.x === 'number' ? c.center.x : 0.5)),
+              y: Math.max(0, Math.min(1, typeof c.center?.y === 'number' ? c.center.y : 0.5))
+            }
+          ]
+        }));
+
+        const useCoords = params.use_coords === true;
+
         parameters.v4_prompt = {
           caption: {
             base_caption: params.prompt,
-            char_captions: []
+            char_captions: charCaptions
           },
-          use_coords: false,
+          use_coords: useCoords,
           use_order: true,
           legacy_uc: false
         };
         parameters.v4_negative_prompt = {
           caption: {
             base_caption: negPrompt,
-            char_captions: []
+            char_captions: charUcCaptions
           },
-          use_coords: false,
+          use_coords: useCoords,
           use_order: false,
           legacy_uc: false
         };
@@ -593,6 +630,32 @@ export const useGenerationStore = defineStore('generation', () => {
     }
   };
 
+  const addCharacter = () => {
+    if (!params.characters) params.characters = [];
+    const count = params.characters.length;
+    let defaultX = 0.5;
+    if (count === 0) defaultX = 0.35;
+    else if (count === 1) defaultX = 0.65;
+    else if (count === 2) defaultX = 0.5;
+
+    params.characters.push({
+      id: `char-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      prompt: '',
+      uc: '',
+      center: { x: defaultX, y: 0.5 },
+      enabled: true
+    });
+  };
+
+  const removeCharacter = (id: string) => {
+    if (!params.characters) return;
+    params.characters = params.characters.filter(c => c.id !== id);
+  };
+
+  const clearCharacters = () => {
+    params.characters = [];
+  };
+
   const resetAdvancedParams = () => {
     params.steps = 28;
     params.sampler = 'k_euler_ancestral';
@@ -608,6 +671,8 @@ export const useGenerationStore = defineStore('generation', () => {
     params.sm_dyn = false;
     params.strength = 0.7;
     params.noise = 0.0;
+    params.characters = [];
+    params.use_coords = false;
   };
 
   const clearHistory = () => {
@@ -647,7 +712,10 @@ export const useGenerationStore = defineStore('generation', () => {
     deleteHistory,
     clearHistory,
     clearFilteredHistory,
-    resetAdvancedParams
+    resetAdvancedParams,
+    addCharacter,
+    removeCharacter,
+    clearCharacters
   };
 }, {
   persist: [

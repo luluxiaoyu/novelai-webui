@@ -1,3 +1,5 @@
+import type { CharacterPrompt } from '../stores/generation';
+
 export interface ParsedImageMetadata {
   hasMetadata: boolean;
   prompt?: string;
@@ -13,6 +15,8 @@ export interface ParsedImageMetadata {
   cfg_rescale?: number;
   uncond_scale?: number;
   skip_cfg_above_sigma?: number | null;
+  characters?: CharacterPrompt[];
+  use_coords?: boolean;
   rawComment?: any;
 }
 
@@ -98,6 +102,21 @@ export function parsePngMetadata(arrayBuffer: ArrayBuffer): ParsedImageMetadata 
       result.cfg_rescale = parsedComment.cfg_rescale;
       result.uncond_scale = parsedComment.uncond_scale;
       result.skip_cfg_above_sigma = parsedComment.skip_cfg_above_sigma;
+
+      // 提取 V4 / V5 多角色定位提示词
+      if (Array.isArray(parsedComment.v4_prompt?.caption?.char_captions) && parsedComment.v4_prompt.caption.char_captions.length > 0) {
+        result.characters = parsedComment.v4_prompt.caption.char_captions.map((c: any, idx: number) => ({
+          id: `char-${idx}-${Date.now()}`,
+          prompt: c.char_caption || '',
+          uc: parsedComment.v4_negative_prompt?.caption?.char_captions?.[idx]?.char_caption || '',
+          center: {
+            x: typeof c.centers?.[0]?.x === 'number' ? c.centers[0].x : 0.5,
+            y: typeof c.centers?.[0]?.y === 'number' ? c.centers[0].y : 0.5
+          },
+          enabled: true
+        }));
+        result.use_coords = parsedComment.v4_prompt.use_coords ?? true;
+      }
 
       if (rawChunks.Source) {
         if (rawChunks.Source.includes('V4 Curated') || rawChunks.Source.includes('V4 Full')) {
