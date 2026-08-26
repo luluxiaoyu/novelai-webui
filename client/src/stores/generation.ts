@@ -657,8 +657,10 @@ export const useGenerationStore = defineStore('generation', () => {
         let preservedNote = undefined;
         let preservedFav = false;
         let preservedGroup = undefined;
+        let preservedId = Date.now().toString();
         
         if (existingIdx !== -1) {
+          preservedId = promptHistory.value[existingIdx].id || preservedId;
           preservedNote = promptHistory.value[existingIdx].note;
           preservedFav = promptHistory.value[existingIdx].isFavorite || false;
           preservedGroup = promptHistory.value[existingIdx].group;
@@ -666,7 +668,7 @@ export const useGenerationStore = defineStore('generation', () => {
         }
 
         promptHistory.value.unshift({
-          id: Date.now().toString(),
+          id: preservedId,
           prompt: params.prompt,
           negative_prompt: params.negative_prompt,
           characters: params.characters && params.characters.length > 0 ? JSON.parse(JSON.stringify(params.characters)) : undefined,
