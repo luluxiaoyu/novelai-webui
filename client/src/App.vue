@@ -389,20 +389,32 @@ const batchOptions = [
 ];
 
 // 计算是否消耗点数及消耗提示
+import { calculateBaseAnlasCost } from './utils/anlasCalculator';
+
 const costInfo = computed(() => {
   const isOpus = authStore.subscriptionTier === 3;
   const pixels = genStore.params.width * genStore.params.height;
   const isNormalSize = pixels <= 1048576; // <= 1024x1024 (或 832x1216 等标准分辨率)
   const isNormalSteps = genStore.params.steps <= 28;
-  // 严格精确判断是否为 V5 模型 (避免 4-5-full 包含 -5 被误判)
   const isV5 = genStore.params.model.startsWith('nai-diffusion-5');
+
+  const anlasCost = calculateBaseAnlasCost(
+    genStore.params.width,
+    genStore.params.height,
+    genStore.params.steps,
+    genStore.params.sm,
+    genStore.params.sm_dyn
+  ) * genStore.batchCount;
+  
+  const estimatedText = `消耗 ${anlasCost} Anlas`;
 
   if (!isOpus) {
     return {
       isFree: false,
-      text: '消耗 anlas 点数',
+      text: estimatedText,
       reason: '非 Opus 会员生图需扣费',
-      blockedByPermission: !authStore.allowPaid
+      blockedByPermission: !authStore.allowPaid,
+      anlas: anlasCost
     };
   }
 
@@ -414,14 +426,16 @@ const costInfo = computed(() => {
           isFree: true,
           text: '免费 (消耗 V5 额度)',
           reason: 'Opus 专属免费生成',
-          blockedByPermission: false
+          blockedByPermission: false,
+          anlas: 0
         };
       } else {
         return {
           isFree: false,
-          text: '消耗 anlas (V5 额度已尽)',
+          text: `${estimatedText} (V5 额度尽)`,
           reason: 'V5 免费额度已耗尽',
-          blockedByPermission: !authStore.allowPaid
+          blockedByPermission: !authStore.allowPaid,
+          anlas: anlasCost
         };
       }
     }
@@ -429,21 +443,26 @@ const costInfo = computed(() => {
       isFree: true,
       text: 'Opus 免费',
       reason: '标准尺寸与步数免费',
-      blockedByPermission: false
+      blockedByPermission: false,
+      anlas: 0
     };
   }
 
   const reasons = [];
-  if (!isNormalSize) reasons.push('分辨率超出 1048576 像素');
+  if (!isNormalSize) reasons.push('分辨率超出 1024x1024');
   if (!isNormalSteps) reasons.push('采样步数超过 28 步');
 
   return {
     isFree: false,
-    text: '需消耗 anlas',
+    text: estimatedText,
     reason: reasons.join('，'),
-    blockedByPermission: !authStore.allowPaid
+    blockedByPermission: !authStore.allowPaid,
+    anlas: anlasCost
   };
 });
+
+// 高成本生成确认状态 (刷新不记忆)
+const confirmHighCost = ref(false);
 
 
 // Inpaint 涂鸦画板与图片处理
@@ -1650,10 +1669,10 @@ watch(
 
           <!-- 生成按钮与点数消耗/免费状态提示 -->
           <div class="flex flex-col gap-2 mt-1">
-          <div class="flex gap-2">
+            <div class="flex gap-2">
             <button 
               @click="genStore.generate(); mobileTab = 'canvas'"
-              :disabled="genStore.isGenerating || costInfo.blockedByPermission"
+              :disabled="genStore.isGenerating || costInfo.blockedByPermission || (!costInfo.isFree && costInfo.anlas > 50 && !confirmHighCost)"
               class="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-gray-800 disabled:text-gray-500 text-white font-medium py-3 rounded-xl shadow-md shadow-blue-600/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2 text-sm"
             >
               <template v-if="genStore.isGenerating">
@@ -1674,13 +1693,25 @@ watch(
               </template>
               <template v-else>
                 <Sparkles class="w-4 h-4" />
-                <span>立即生成图像</span>
+                <span>{{ !costInfo.isFree && costInfo.anlas > 50 && !confirmHighCost ? '请先勾选确认高点数消耗' : '立即生成图像' }}</span>
               </template>
             </button>
             <div class="w-20 shrink-0 h-full self-stretch flex">
               <CustomSelect v-model="genStore.batchCount" :options="batchOptions" placement="right" size="lg" class="h-full w-full flex items-center" />
             </div>
           </div>
+
+            <!-- 高额度消费确认开关 -->
+            <div v-if="!costInfo.isFree && costInfo.anlas > 50" class="flex items-center justify-between px-3 py-2 bg-red-50/50 dark:bg-red-900/10 border border-red-200 dark:border-red-800/40 rounded-lg">
+              <div class="flex items-center gap-2">
+                <AlertTriangle class="w-4 h-4 text-red-500" />
+                <span class="text-xs font-medium text-red-600 dark:text-red-400">单次生成消耗将超过 50 Anlas ({{ costInfo.anlas }} Anlas)</span>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" v-model="confirmHighCost" class="sr-only peer">
+                <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-red-500"></div>
+              </label>
+            </div>
 
             <!-- 费用预估警告标签 (超出免费限制显示黄色/橙色警告，免费显示绿色) -->
             <div class="flex items-center justify-between px-2.5 py-1.5 rounded-lg border text-xs transition-colors"
