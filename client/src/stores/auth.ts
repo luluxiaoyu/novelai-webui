@@ -12,6 +12,9 @@ export const useAuthStore = defineStore('auth', () => {
   const v5UsagePercent = ref<number>(0);
   const trainingSteps = ref<number>(0);
 
+  const expiresAt = ref<number>(0);
+  const timeUntilNextPercent = ref<number>(0);
+
   // 站点访问密码 / 密钥验证状态
   const siteAuthRequired = ref<boolean>(false);
   const siteUnlocked = ref<boolean>(false);
@@ -100,9 +103,9 @@ export const useAuthStore = defineStore('auth', () => {
     loading.value = true;
     error.value = '';
     try {
-      const headers: Record<string, string> = {
-        'Authorization': `Bearer ${targetToken}`
-      };
+      const headers = targetToken === '__BUILTIN__' 
+        ? { 'Authorization': '__BUILTIN__' }
+        : { 'Authorization': `Bearer ${targetToken}` } as Record<string, string>;
       if (siteAccessKey.value) {
         headers['x-access-key'] = siteAccessKey.value;
       }
@@ -125,9 +128,13 @@ export const useAuthStore = defineStore('auth', () => {
           if (data.active !== undefined) {
             active.value = !!data.active;
           }
+          if (data.expiresAt) {
+            expiresAt.value = data.expiresAt;
+          }
           // 准确提取 V5 免费动态额度
           if (data.usage && typeof data.usage.percent === 'number') {
             v5UsagePercent.value = data.usage.percent;
+            timeUntilNextPercent.value = data.usage.timeUntilNextPercent || 0;
           }
           // 计算 Anlas 点数 (Fixed + Purchased training steps)
           if (data.trainingStepsLeft) {
@@ -225,6 +232,8 @@ export const useAuthStore = defineStore('auth', () => {
     subscriptionTier.value = 0;
     active.value = false;
     v5UsagePercent.value = 0;
+    expiresAt.value = 0;
+    timeUntilNextPercent.value = 0;
     trainingSteps.value = 0;
     error.value = '';
   };
@@ -237,7 +246,7 @@ export const useAuthStore = defineStore('auth', () => {
   };
 
   return { 
-    token, anlas, subscriptionTier, active, v5UsagePercent, trainingSteps, loading, error, 
+    token, anlas, subscriptionTier, active, v5UsagePercent, expiresAt, timeUntilNextPercent, trainingSteps, loading, error, 
     siteAuthRequired, siteUnlocked, siteAccessKey, siteAuthLoading, siteAuthError, siteAuthChecked,
     hasBuiltinKey, allowPaid,
     checkSiteAuthStatus, verifySiteAccess, login, loginWithBuiltin, logout, lockSite, fetchUserData 

@@ -74,6 +74,16 @@ const promptGroupFilter = ref('all');
 const promptSearchQuery = ref('');
 const paramsCopied = ref(false);
 const imageCopied = ref(false);
+const formatMsToTime = (ms: number) => {
+  if (!ms || ms <= 0) return '0 秒';
+  const totalSeconds = Math.floor(ms / 1000);
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  if (h > 0) return `${h} 小时 ${m} 分钟`;
+  if (m > 0) return `${m} 分钟 ${s} 秒`;
+  return `${s} 秒`;
+};
 
 const showDataModal = ref(false);
 const dataModalTab = ref<'local'|'webdav'>('local');
@@ -1114,90 +1124,117 @@ watch(
     <!-- 正常工作台流程 (通过密钥验证后才渲染顶部栏与后续页面) -->
     <template v-else>
       <!-- 头部区域 (优化移动端与PC端适配) -->
-      <header class="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-4 py-2.5 flex flex-wrap justify-between items-center gap-2 shadow-sm z-10 shrink-0 transition-colors">
-      <div class="flex items-center gap-2.5">
-        <img src="/favicon.png" alt="Logo" class="w-6 h-6 rounded-md object-contain shrink-0" />
-        <h1 class="text-lg md:text-xl font-bold tracking-tight whitespace-nowrap">
-          NovelAI 工作台
-        </h1>
-      </div>
-      
-      <div class="flex flex-wrap gap-2 md:gap-3 items-center">
-        <template v-if="authStore.token">
-          <span 
-            v-if="!authStore.allowPaid"
-            class="text-xs bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 px-2.5 py-1.5 rounded-md border border-amber-200 dark:border-amber-850 font-medium whitespace-nowrap flex items-center gap-1"
-            title="该访问密钥已开启权限限制，仅可使用免费参数生图"
-          >
-            <Lock class="w-3 h-3 text-amber-500" />
-            受限密钥 (仅免费额度)
-          </span>
-          <span class="text-xs bg-gray-100 dark:bg-gray-800 px-2.5 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 font-medium">
-            {{ authStore.token === '__BUILTIN__' ? '内置 API Key' : (authStore.subscriptionTier === 3 ? 'Opus 会员' : (authStore.subscriptionTier === 2 ? 'Scroll 会员' : (authStore.subscriptionTier === 1 ? 'Tablet 会员' : '免费/未定'))) }}
-          </span>
-          <span class="text-xs bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2.5 py-1.5 rounded-md border border-blue-200 dark:border-blue-800 font-medium whitespace-nowrap">
-            Anlas: {{ authStore.anlas.toLocaleString() }}
-          </span>
+      <header class="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-4 py-2 flex flex-col md:flex-row justify-between items-start md:items-center gap-2 shadow-sm z-10 shrink-0 transition-colors relative">
+        
+        <!-- 第一行：Logo、标题以及全局操作按钮 (移动端也能完整显示) -->
+        <div class="flex items-center justify-between w-full md:w-auto shrink-0">
+          <div class="flex items-center gap-2">
+            <img src="/favicon.png" alt="Logo" class="w-6 h-6 rounded-md object-contain shrink-0" />
+            <h1 class="text-base md:text-xl font-bold tracking-tight whitespace-nowrap">
+              NovelAI 工作台
+            </h1>
+          </div>
+          
+          <div class="flex items-center gap-1 sm:gap-1.5 ml-2">
+            <!-- 大屏图库入口 -->
+            <button 
+              @click="showImageGallery = true" 
+              class="text-gray-600 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-1.5 text-xs font-medium border border-gray-200 dark:border-gray-700 shadow-sm shrink-0"
+              title="打开全屏历史图库与打包管理"
+            >
+              <ImageIcon class="w-4 h-4 text-blue-500" />
+              <span class="hidden sm:inline">大屏图库</span>
+              <span v-if="genStore.history.length > 0" class="text-[10px] bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 px-1 py-0.2 rounded font-mono">{{ genStore.history.length }}</span>
+            </button>
+            <button @click="showDataModal = true" class="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white p-1.5 transition shrink-0 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800" title="数据管理与备份">
+              <Database class="w-4 h-4" />
+            </button>
+            <button @click="toggleDark()" class="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white p-1.5 transition shrink-0 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800" title="切换主题">
+              <Moon v-if="!isDark" class="w-4 h-4" />
+              <Sun v-else class="w-4 h-4" />
+            </button>
+            <a 
+              href="https://github.com/luluxiaoyu/novelai-webui" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              class="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white p-1.5 transition flex items-center justify-center shrink-0 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800" 
+              title="GitHub 开源仓库 (novelai-webui)"
+            >
+              <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24" aria-hidden="true">
+                <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"></path>
+              </svg>
+            </a>
+          </div>
+        </div>
+        
+        <!-- 第二行：滚动的账户状态标签组 (移动端横向滑动) -->
+        <div class="flex flex-nowrap overflow-x-auto gap-2 items-center w-full md:w-auto shrink-0 pb-1 md:pb-0 [&::-webkit-scrollbar]:hidden" style="scrollbar-width: none; -ms-overflow-style: none;">
+          <template v-if="authStore.token">
+            <span 
+              v-if="!authStore.allowPaid"
+              class="text-xs bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 px-2.5 py-1.5 rounded-md border border-amber-200 dark:border-amber-850 font-medium inline-flex items-center gap-1 whitespace-nowrap"
+              title="该访问密钥已开启权限限制，仅可使用免费参数生图"
+            >
+              <Lock class="w-3 h-3 text-amber-500" />
+              受限密钥
+            </span>
+            <span v-if="authStore.token === '__BUILTIN__'" class="text-xs bg-gray-100 dark:bg-gray-800 px-2.5 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 font-medium inline-flex items-center whitespace-nowrap">
+              内置 API Key
+            </span>
+            <span class="text-xs bg-gray-100 dark:bg-gray-800 px-2.5 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 font-medium inline-flex items-center gap-1.5 whitespace-nowrap">
+              <span>{{ authStore.subscriptionTier === 3 ? 'Opus 会员' : (authStore.subscriptionTier === 2 ? 'Scroll 会员' : (authStore.subscriptionTier === 1 ? 'Tablet 会员' : '免费/未定')) }}</span>
+              <span v-if="authStore.expiresAt" class="text-gray-500 dark:text-gray-400 font-normal text-[10px] bg-gray-200/50 dark:bg-gray-700/50 px-1.5 py-0 rounded">
+                (至 {{ new Date(authStore.expiresAt * 1000).toLocaleDateString() }})
+              </span>
+            </span>
+            <span class="text-xs bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2.5 py-1.5 rounded-md border border-blue-200 dark:border-blue-800 font-medium inline-flex items-center whitespace-nowrap shrink-0">
+              Anlas: {{ authStore.anlas.toLocaleString() }}
+            </span>
 
-          <!-- V5 额度进度条徽章 (适配移动端，默认100%满，超出以100%进度显示) -->
-          <div 
-            class="flex items-center gap-2 bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/60 px-2.5 py-1 rounded-md text-xs" 
-            title="V5 模型免费动态额度 (Stamina / Usage)"
-          >
-            <div class="flex flex-col gap-0.5">
-              <div class="flex justify-between items-center text-[10px] text-purple-700 dark:text-purple-300 font-medium gap-1.5">
-                <span>V5 额度</span>
-                <span class="font-bold font-mono">{{ authStore.v5UsagePercent }}%</span>
+            <!-- V5 额度进度条徽章 (适配移动端，默认100%满，超出以100%进度显示) -->
+            <div 
+              class="flex items-center gap-2 bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/60 px-2.5 py-1 rounded-md text-xs relative group shrink-0" 
+              title="V5 模型免费动态额度 (Stamina / Usage)"
+            >
+              <div class="flex flex-col gap-0.5">
+                <div class="flex justify-between items-center text-[10px] text-purple-700 dark:text-purple-300 font-medium gap-1.5">
+                  <span>V5 额度</span>
+                  <span class="font-bold font-mono">{{ authStore.v5UsagePercent }}%</span>
+                </div>
+                <div class="w-16 sm:w-20 h-1.5 bg-purple-200 dark:bg-purple-900/50 rounded-full overflow-hidden">
+                  <div 
+                    class="h-full bg-gradient-to-r from-purple-500 to-indigo-500 rounded-full transition-all duration-300"
+                    :style="{ width: `${Math.min(100, Math.max(0, authStore.v5UsagePercent))}%` }"
+                  ></div>
+                </div>
               </div>
-              <div class="w-16 sm:w-20 h-1.5 bg-purple-200 dark:bg-purple-900/50 rounded-full overflow-hidden">
-                <div 
-                  class="h-full bg-gradient-to-r from-purple-500 to-indigo-500 rounded-full transition-all duration-300"
-                  :style="{ width: `${Math.min(100, Math.max(0, authStore.v5UsagePercent))}%` }"
-                ></div>
+
+              <!-- Hover tooltip info for recovery -->
+              <div v-if="authStore.v5UsagePercent < 100 && authStore.timeUntilNextPercent" class="absolute top-full mt-2 left-1/2 -translate-x-1/2 w-max bg-gray-800 dark:bg-gray-900 text-white text-[10px] sm:text-xs px-2.5 py-2 rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 shadow-lg border border-gray-700">
+                <div class="font-medium mb-1 text-gray-200 border-b border-gray-700 pb-1">额度恢复倒计时:</div>
+                <div class="flex justify-between gap-4 mt-1.5">
+                  <span class="text-gray-400">+1% 需:</span>
+                  <span class="font-mono text-purple-300">{{ formatMsToTime(authStore.timeUntilNextPercent) }}</span>
+                </div>
+                <div class="flex justify-between gap-4 mt-1">
+                  <span class="text-gray-400">至 100%:</span>
+                  <span class="font-mono text-purple-300">{{ formatMsToTime(authStore.timeUntilNextPercent + (99 - authStore.v5UsagePercent) * 3600000) }}</span>
+                </div>
               </div>
             </div>
-          </div>
 
-          <button @click="authStore.fetchUserData()" :disabled="authStore.loading" class="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white p-1 transition" title="刷新额度">
-            <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': authStore.loading }" />
-          </button>
-          <button @click="authStore.logout(); inputToken = ''" class="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white p-1 transition" title="退出当前 Token 登录">
-            <LogOut class="w-4 h-4" />
-          </button>
-          <button v-if="authStore.siteAuthRequired" @click="authStore.lockSite(); inputToken = ''" class="text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 p-1 transition" title="退出并锁定访问密钥">
-            <Lock class="w-4 h-4" />
-          </button>
-        </template>
-        <!-- 大屏图库入口 -->
-        <button 
-          @click="showImageGallery = true" 
-          class="text-gray-600 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-1.5 text-xs font-medium border border-gray-200 dark:border-gray-700 shadow-sm"
-          title="打开全屏历史图库与打包管理"
-        >
-          <ImageIcon class="w-4 h-4 text-blue-500" />
-          <span class="hidden sm:inline">大屏图库</span>
-          <span v-if="genStore.history.length > 0" class="text-[10px] bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 px-1 py-0.2 rounded font-mono">{{ genStore.history.length }}</span>
-        </button>
-        <button @click="showDataModal = true" class="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white p-1 transition" title="数据管理与备份">
-          <Database class="w-4 h-4" />
-        </button>
-        <button @click="toggleDark()" class="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white p-1 transition" title="切换主题">
-          <Moon v-if="!isDark" class="w-4 h-4" />
-          <Sun v-else class="w-4 h-4" />
-        </button>
-        <a 
-          href="https://github.com/luluxiaoyu/novelai-webui" 
-          target="_blank" 
-          rel="noopener noreferrer"
-          class="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white p-1 transition flex items-center justify-center" 
-          title="GitHub 开源仓库 (novelai-webui)"
-        >
-          <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24" aria-hidden="true">
-            <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
-          </svg>
-        </a>
-      </div>
-    </header>
+            <button @click="authStore.fetchUserData()" :disabled="authStore.loading" class="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition shrink-0" title="刷新额度">
+              <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': authStore.loading }" />
+            </button>
+            <button @click="authStore.logout(); inputToken = ''" class="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition shrink-0" title="退出当前 Token 登录">
+              <LogOut class="w-4 h-4" />
+            </button>
+            <button v-if="authStore.siteAuthRequired" @click="authStore.lockSite(); inputToken = ''" class="text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition shrink-0" title="退出并锁定访问密钥">
+              <Lock class="w-4 h-4" />
+            </button>
+          </template>
+        </div>
+      </header>
 
     <!-- 登录页 -->
     <main class="flex-1 flex items-center justify-center p-4 bg-gray-100 dark:bg-gray-950 transition-colors" v-if="!authStore.token">
