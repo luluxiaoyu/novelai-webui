@@ -106,12 +106,14 @@ const handleConfirm = () => {
 
 // 填入官方 Heavy UC 预设
 const fillOfficialUC = () => {
-  const isV3 = genStore.params.model === 'nai-diffusion-3';
-  if (isV3) {
-    draftNegativePrompt.value = 'nsfw, lowres, {bad}, error, fewer, extra, missing, worst quality, jpeg artifacts, bad quality, watermark, unfinished, displeasing, chromatic aberration, signature, extra digits, artistic error, username, scan, [abstract]';
-  } else {
-    draftNegativePrompt.value = 'blurry, lowres, error, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, multiple views, logo, signature, watermark, text, words, bad anatomy, bad hands, bad body, bad proportions, bad feet, missing limbs, missing fingers, extra digits, extra limbs';
-  }
+  const officialUC = "lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, blurry, lowres, error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, multiple views, logo, too many watermarks, lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry, bad feet, username, {bad}, fewer, extra, watermark, unfinished,displeasing, chromatic aberration, signature, extra digits, artistic error, scan, [abstract],logo,{big belly},";
+  
+  const presetTags = officialUC.split(',').map(t => t.trim()).filter(Boolean);
+  const userTags = (draftNegativePrompt.value || '').split(',').map(t => t.trim()).filter(Boolean);
+  const presetSet = new Set(presetTags);
+  
+  const customUserTags = userTags.filter(t => !presetSet.has(t));
+  draftNegativePrompt.value = [...presetTags, ...customUserTags].join(', ') + ', ';
 };
 
 // 格式化清理多余逗号与空格

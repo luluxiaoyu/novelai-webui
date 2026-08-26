@@ -346,11 +346,14 @@ export const useGenerationStore = defineStore('generation', () => {
           finalPrompt = OFFICIAL_V5_POS_PRESET.replace(/^,\s*/, '');
         }
 
-        if (!finalNegPrompt.includes('chromatic aberration') && !finalNegPrompt.includes('artistic error')) {
-          finalNegPrompt = finalNegPrompt 
-            ? `${OFFICIAL_V5_NEG_PRESET} ${finalNegPrompt}`
-            : OFFICIAL_V5_NEG_PRESET;
-        }
+        const presetTags = OFFICIAL_V5_NEG_PRESET.split(',').map(t => t.trim()).filter(Boolean);
+        const userTags = finalNegPrompt.split(',').map(t => t.trim()).filter(Boolean);
+        const presetSet = new Set(presetTags);
+        
+        // 过滤掉用户自己写的、但预设里已经包含的词（去重），保留真正的自定义负向词
+        const customUserTags = userTags.filter(t => !presetSet.has(t));
+        
+        finalNegPrompt = [...presetTags, ...customUserTags].join(', ');
       }
 
       if (isV4OrV5) {

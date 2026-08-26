@@ -1041,11 +1041,13 @@ const copyImageToClipboard = async () => {
 
 const fillOfficialUC = () => {
   const officialUC = "lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, blurry, lowres, error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, multiple views, logo, too many watermarks, lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry, bad feet, username, {bad}, fewer, extra, watermark, unfinished,displeasing, chromatic aberration, signature, extra digits, artistic error, scan, [abstract],logo,{big belly},";
-  if (!genStore.params.negative_prompt.trim()) {
-    genStore.params.negative_prompt = officialUC;
-  } else if (!genStore.params.negative_prompt.includes('chromatic aberration')) {
-    genStore.params.negative_prompt = `${officialUC} ${genStore.params.negative_prompt}`;
-  }
+  
+  const presetTags = officialUC.split(',').map(t => t.trim()).filter(Boolean);
+  const userTags = genStore.params.negative_prompt.split(',').map(t => t.trim()).filter(Boolean);
+  const presetSet = new Set(presetTags);
+  
+  const customUserTags = userTags.filter(t => !presetSet.has(t));
+  genStore.params.negative_prompt = [...presetTags, ...customUserTags].join(', ') + ', ';
 };
 
 watch(
@@ -1729,23 +1731,6 @@ watch(
           </div>
 
           <div class="flex flex-col gap-2.5 pt-3 border-t border-gray-200 dark:border-gray-800">
-            <!-- 自动追加官方画质预设开关 -->
-            <div class="flex items-center justify-between cursor-pointer group" @click="genStore.params.auto_quality_presets = !genStore.params.auto_quality_presets" title="生图时在后台自动追加官方正向(, no text, best quality...)与负向(Heavy UC)画质增强预设，无需手动填入输入框，保持输入框纯净">
-              <div class="flex flex-col">
-                <span class="text-xs font-medium text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-gray-100 transition-colors">自动追加官方画质预设</span>
-                <span class="text-[10px] text-gray-400">后台追加 best quality 与官方 Heavy UC</span>
-              </div>
-              <button 
-                class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors focus:outline-none"
-                :class="genStore.params.auto_quality_presets ? 'bg-purple-600' : 'bg-gray-200 dark:bg-gray-700'"
-              >
-                <span 
-                  class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                  :class="genStore.params.auto_quality_presets ? 'translate-x-2' : '-translate-x-2'"
-                />
-              </button>
-            </div>
-
             <div class="flex items-center justify-between cursor-pointer group" @click="genStore.params.enable_stream = !genStore.params.enable_stream" title="允许服务器边画边给你传模糊过程图">
               <span class="text-xs font-medium text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-gray-100 transition-colors">流式生成 (实时预览)</span>
               <button 
