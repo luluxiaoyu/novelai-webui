@@ -23,7 +23,7 @@ const genStore = useGenerationStore();
 
 // 筛选与搜索状态
 const searchQuery = ref('');
-const timeFilter = ref<'all' | 'today' | 'yesterday' | 'week' | 'month' | 'custom'>('all');
+const timeFilter = ref<'all' | 'today' | 'yesterday' | 'dayBefore' | 'recent3' | 'recent7' | 'thisMonth' | 'month' | 'custom'>('all');
 const customStartDate = ref('');
 const customEndDate = ref('');
 const sortOrder = ref<'desc' | 'asc'>('desc'); // desc: 最新在前, asc: 最旧在前
@@ -61,6 +61,17 @@ const copyText = (text: string, key: string) => {
   triggerCopyFeedback(key);
 };
 
+// 活跃日期提取 (用于自定义日期快捷选择)
+const activeDates = computed(() => {
+  const map = new Map<string, number>();
+  for (const img of genStore.history) {
+    const d = new Date(img.timestamp);
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    map.set(dateStr, (map.get(dateStr) || 0) + 1);
+  }
+  return Array.from(map.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+});
+
 // 计算时间过滤与搜索过滤后的历史列表
 const filteredImages = computed(() => {
   let list = [...genStore.history];
@@ -69,16 +80,22 @@ const filteredImages = computed(() => {
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const startOfYesterday = startOfToday - 24 * 60 * 60 * 1000;
-  const startOfThisWeek = startOfToday - 7 * 24 * 60 * 60 * 1000;
-  const startOfThisMonth = startOfToday - 30 * 24 * 60 * 60 * 1000;
+  const startOfDayBefore = startOfToday - 2 * 24 * 60 * 60 * 1000;
+  const startOfRecent3 = startOfToday - 2 * 24 * 60 * 60 * 1000; // 前天开始
+  const startOfRecent7 = startOfToday - 6 * 24 * 60 * 60 * 1000;
+  const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
 
   if (timeFilter.value === 'today') {
     list = list.filter(item => item.timestamp >= startOfToday);
   } else if (timeFilter.value === 'yesterday') {
     list = list.filter(item => item.timestamp >= startOfYesterday && item.timestamp < startOfToday);
-  } else if (timeFilter.value === 'week') {
-    list = list.filter(item => item.timestamp >= startOfThisWeek);
-  } else if (timeFilter.value === 'month') {
+  } else if (timeFilter.value === 'dayBefore') {
+    list = list.filter(item => item.timestamp >= startOfDayBefore && item.timestamp < startOfYesterday);
+  } else if (timeFilter.value === 'recent3') {
+    list = list.filter(item => item.timestamp >= startOfRecent3);
+  } else if (timeFilter.value === 'recent7') {
+    list = list.filter(item => item.timestamp >= startOfRecent7);
+  } else if (timeFilter.value === 'thisMonth') {
     list = list.filter(item => item.timestamp >= startOfThisMonth);
   } else if (timeFilter.value === 'custom') {
     if (customStartDate.value) {
@@ -135,10 +152,66 @@ const groupedImages = computed(() => {
   return groups;
 });
 
-// 单击图片打开大图详情
+// 选择管理
+const toggleSelect = (id: string) => {
+  if (!id) return;
+  if (selectedIds.value.has(id)) {
+    selectedIds.value.delete(id);
+  } else {
+    selectedIds.value.add(id);
+  }
+};
+
+// 拖拽多选逻辑
+const isDragSelecting = ref(false);
+const dragSelectAction = ref<'select' | 'deselect'>('select');
+let lastMousedownId = '';
+let lastMousedownTime = 0;
+const dragProcessedIds = new Set<string>();
+
+const startDragSelect = (e: MouseEvent, img: GeneratedImage) => {
+  if (!isBatchMode.value) return;
+  if (e.button !== 0) return; // 仅响应左键
+  
+  isDragSelecting.value = true;
+  lastMousedownId = img.id;
+  lastMousedownTime = Date.now();
+  dragProcessedIds.clear();
+  dragProcessedIds.add(img.id);
+
+  if (selectedIds.value.has(img.id)) {
+    dragSelectAction.value = 'deselect';
+    selectedIds.value.delete(img.id);
+  } else {
+    dragSelectAction.value = 'select';
+    selectedIds.value.add(img.id);
+  }
+};
+
+const onDragEnter = (img: GeneratedImage) => {
+  if (!isBatchMode.value || !isDragSelecting.value) return;
+  if (dragProcessedIds.has(img.id)) return;
+  
+  dragProcessedIds.add(img.id);
+  if (dragSelectAction.value === 'select') {
+    selectedIds.value.add(img.id);
+  } else {
+    selectedIds.value.delete(img.id);
+  }
+};
+
+const stopDragSelect = () => {
+  isDragSelecting.value = false;
+};
+
+// 单击图片打开大图详情或批量选中
 const openDetail = (img: GeneratedImage) => {
   if (isBatchMode.value) {
-    toggleSelect(item => item.id === img.id ? img.id : '');
+    // 如果 click 是刚被 mousedown 拖拽触发的，为了防止双重触发反转，进行拦截
+    if (lastMousedownId === img.id && (Date.now() - lastMousedownTime < 500)) {
+      return;
+    }
+    toggleSelect(img.id);
     return;
   }
   img.isNew = false;
@@ -169,26 +242,51 @@ const handleKeyDown = (e: KeyboardEvent) => {
   }
 };
 
-onMounted(() => window.addEventListener('keydown', handleKeyDown));
-onUnmounted(() => window.removeEventListener('keydown', handleKeyDown));
+onMounted(() => {
+  window.addEventListener('keydown', handleKeyDown);
+  window.addEventListener('mouseup', stopDragSelect);
+});
 
-// 选择管理
-const toggleSelect = (idOrFn: string | ((i: any) => string)) => {
-  const id = typeof idOrFn === 'function' ? idOrFn(selectedImage.value) : idOrFn;
-  if (!id) return;
-  if (selectedIds.value.has(id)) {
-    selectedIds.value.delete(id);
-  } else {
-    selectedIds.value.add(id);
-  }
-};
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeyDown);
+  window.removeEventListener('mouseup', stopDragSelect);
+});
 
+// 全选当前过滤结果
 const selectAll = () => {
   selectedIds.value = new Set(filteredImages.value.map(i => i.id));
 };
 
+// 全选所有历史
+const selectAllHistory = () => {
+  selectedIds.value = new Set(genStore.history.map(i => i.id));
+};
+
+// 反选当前过滤结果
+const invertSelection = () => {
+  const newSet = new Set(selectedIds.value);
+  for (const img of filteredImages.value) {
+    if (newSet.has(img.id)) {
+      newSet.delete(img.id);
+    } else {
+      newSet.add(img.id);
+    }
+  }
+  selectedIds.value = newSet;
+};
+
 const clearSelection = () => {
   selectedIds.value.clear();
+};
+
+// 按日期组全选/反选
+const toggleGroupSelection = (groupImages: GeneratedImage[]) => {
+  const allSelected = groupImages.every(img => selectedIds.value.has(img.id));
+  if (allSelected) {
+    groupImages.forEach(img => selectedIds.value.delete(img.id));
+  } else {
+    groupImages.forEach(img => selectedIds.value.add(img.id));
+  }
 };
 
 // 单张下载
@@ -344,6 +442,8 @@ const formatDateFull = (timestamp: number) => {
             <span>{{ isBatchMode ? `批量操作 (${selectedIds.size})` : '批量选择' }}</span>
           </button>
 
+
+
           <!-- 批量打包下载 -->
           <button 
             @click="downloadBatchZip"
@@ -379,44 +479,65 @@ const formatDateFull = (timestamp: number) => {
       <!-- 搜索与多维时间筛选工具栏 -->
       <div class="px-4 py-2.5 sm:px-6 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex flex-wrap items-center justify-between gap-3 shrink-0">
         <!-- 时间预设 Tab 切换 -->
-        <div class="flex items-center gap-1.5 flex-wrap">
-          <span class="text-xs font-semibold text-gray-500 flex items-center gap-1 mr-1">
-            <Clock class="w-3.5 h-3.5" />
-            时间:
-          </span>
-          <button 
-            v-for="tab in [
-              { id: 'all', label: '全部' },
-              { id: 'today', label: '今天' },
-              { id: 'yesterday', label: '昨天' },
-              { id: 'week', label: '最近7天' },
-              { id: 'month', label: '近30天' },
-              { id: 'custom', label: '自定义日期' }
-            ]"
-            :key="tab.id"
-            @click="timeFilter = tab.id as any"
-            class="text-xs px-2.5 py-1 rounded-lg font-medium transition-all"
-            :class="timeFilter === tab.id 
-              ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/20' 
-              : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'"
-          >
-            {{ tab.label }}
-          </button>
-        </div>
+        <div class="flex flex-col gap-2 w-full sm:w-auto flex-1">
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <span class="text-xs font-semibold text-gray-500 flex items-center gap-1 mr-1">
+              <Clock class="w-3.5 h-3.5" />
+              时间:
+            </span>
+            <button 
+              v-for="tab in [
+                { id: 'all', label: '全部' },
+                { id: 'today', label: '今天' },
+                { id: 'yesterday', label: '昨天' },
+                { id: 'dayBefore', label: '前天' },
+                { id: 'recent3', label: '最近3天' },
+                { id: 'recent7', label: '最近7天' },
+                { id: 'thisMonth', label: '本月' },
+                { id: 'custom', label: '自定义日期' }
+              ]"
+              :key="tab.id"
+              @click="timeFilter = tab.id as any"
+              class="text-xs px-2.5 py-1 rounded-lg font-medium transition-all"
+              :class="timeFilter === tab.id 
+                ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/20' 
+                : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'"
+            >
+              {{ tab.label }}
+            </button>
+          </div>
 
-        <!-- 自定义日期范围选择器 -->
-        <div v-if="timeFilter === 'custom'" class="flex items-center gap-1.5 text-xs animate-fade-in">
-          <input 
-            type="date" 
-            v-model="customStartDate" 
-            class="bg-gray-50 dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-lg px-2 py-1 outline-none text-xs" 
-          />
-          <span class="text-gray-400">至</span>
-          <input 
-            type="date" 
-            v-model="customEndDate" 
-            class="bg-gray-50 dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-lg px-2 py-1 outline-none text-xs" 
-          />
+          <!-- 自定义日期范围选择器 & 活跃日期快捷标签 -->
+          <div v-if="timeFilter === 'custom'" class="flex flex-wrap items-center gap-2 text-xs animate-fade-in pl-1 sm:pl-14">
+            <div class="flex items-center gap-1">
+              <input 
+                type="date" 
+                v-model="customStartDate" 
+                class="bg-gray-50 dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-lg px-2 py-1 outline-none text-xs" 
+              />
+              <span class="text-gray-400">至</span>
+              <input 
+                type="date" 
+                v-model="customEndDate" 
+                class="bg-gray-50 dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-lg px-2 py-1 outline-none text-xs" 
+              />
+            </div>
+            
+            <div class="hidden sm:block w-px h-4 bg-gray-200 dark:bg-gray-700 mx-1"></div>
+            
+            <div class="flex items-center gap-1.5 overflow-x-auto custom-scrollbar pb-1 max-w-full">
+              <span class="text-gray-400 shrink-0 mr-1">有图日期:</span>
+              <button
+                v-for="[date, count] in activeDates"
+                :key="date"
+                @click="customStartDate = date; customEndDate = date;"
+                class="shrink-0 px-2 py-0.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-blue-300 hover:text-blue-600 dark:hover:text-blue-400 transition"
+                :class="{ 'border-blue-500 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30': customStartDate === date && customEndDate === date }"
+              >
+                {{ date }} <span class="opacity-60 text-[10px]">({{ count }})</span>
+              </button>
+            </div>
+          </div>
         </div>
 
         <!-- 搜索与视图控制 -->
@@ -463,14 +584,22 @@ const formatDateFull = (timestamp: number) => {
       <!-- 批量选择悬浮操作副栏 -->
       <div 
         v-if="isBatchMode" 
-        class="px-6 py-2 bg-purple-50 dark:bg-purple-950/30 border-b border-purple-100 dark:border-purple-900/50 flex items-center justify-between text-xs animate-fade-in"
+        class="px-4 sm:px-6 py-2.5 bg-purple-50 dark:bg-purple-950/30 border-b border-purple-100 dark:border-purple-900/50 flex flex-wrap items-center justify-between gap-3 text-xs animate-fade-in"
       >
-        <div class="flex items-center gap-3">
-          <span class="font-bold text-purple-700 dark:text-purple-300">已选择 {{ selectedIds.size }} 项</span>
-          <button @click="selectAll" class="text-blue-600 dark:text-blue-400 hover:underline font-medium">全选当前筛选 ({{ filteredImages.length }})</button>
-          <button @click="clearSelection" class="text-gray-500 hover:underline">取消选择</button>
+        <div class="flex items-center gap-4 flex-wrap">
+          <div class="flex items-center gap-1.5 font-bold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900/60 px-3 py-1 rounded-lg">
+            <CheckSquare class="w-4 h-4" />
+            已选择 {{ selectedIds.size }} 项
+          </div>
+          
+          <div class="flex items-center gap-2">
+            <button @click="selectAll" class="px-2.5 py-1.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm hover:border-purple-400 dark:hover:border-purple-500 hover:text-purple-600 transition font-medium">全选当前筛选 ({{ filteredImages.length }})</button>
+            <button @click="selectAllHistory" class="px-2.5 py-1.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm hover:border-purple-400 dark:hover:border-purple-500 hover:text-purple-600 transition font-medium">全选所有历史 ({{ genStore.history.length }})</button>
+            <button @click="invertSelection" class="px-2.5 py-1.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm hover:border-purple-400 dark:hover:border-purple-500 hover:text-purple-600 transition font-medium">反选当前</button>
+            <button v-if="selectedIds.size > 0" @click="clearSelection" class="px-2.5 py-1.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm hover:border-red-400 dark:hover:border-red-500 text-red-600 transition font-medium">清空选择</button>
+          </div>
         </div>
-        <span class="text-[11px] text-purple-600/80 dark:text-purple-400/80">提示：点击卡片可快速多选，支持一键批量打包或删除</span>
+        <span class="text-[11px] text-purple-600/80 dark:text-purple-400/80 hidden lg:inline">提示：点击卡片可快速多选，支持日期分组一键全选</span>
       </div>
 
       <!-- 打包进度条 -->
@@ -499,10 +628,26 @@ const formatDateFull = (timestamp: number) => {
         <div v-else class="flex flex-col gap-6">
           <section v-for="group in groupedImages" :key="group.dateStr" class="flex flex-col gap-3">
             <!-- 日期组标题头 -->
-            <div class="flex items-center gap-2.5 pb-1 border-b border-gray-200 dark:border-gray-800">
-              <Calendar class="w-4 h-4 text-blue-600 dark:text-blue-400" />
-              <h3 class="text-xs sm:text-sm font-bold font-mono text-gray-700 dark:text-gray-200">{{ group.dateStr }}</h3>
-              <span class="text-[11px] text-gray-400 font-mono">({{ group.images.length }} 张)</span>
+            <div class="flex items-center justify-between pb-1 border-b border-gray-200 dark:border-gray-800 group/header">
+              <div class="flex items-center gap-2.5">
+                <Calendar class="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                <h3 class="text-xs sm:text-sm font-bold font-mono text-gray-700 dark:text-gray-200">{{ group.dateStr }}</h3>
+                <span class="text-[11px] text-gray-400 font-mono">({{ group.images.length }} 张)</span>
+              </div>
+              
+              <!-- 该日期的批量选择按钮 -->
+              <button 
+                v-if="isBatchMode"
+                @click="toggleGroupSelection(group.images)"
+                class="flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium transition"
+                :class="group.images.every(img => selectedIds.has(img.id)) 
+                  ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300' 
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'"
+              >
+                <CheckSquare v-if="group.images.every(img => selectedIds.has(img.id))" class="w-3.5 h-3.5" />
+                <Square v-else class="w-3.5 h-3.5" />
+                <span>{{ group.images.every(img => selectedIds.has(img.id)) ? '全选本组' : (group.images.some(img => selectedIds.has(img.id)) ? `已选 ${group.images.filter(img => selectedIds.has(img.id)).length} 张` : '全选本组') }}</span>
+              </button>
             </div>
 
             <!-- 图片网格 -->
@@ -513,6 +658,8 @@ const formatDateFull = (timestamp: number) => {
               <div 
                 v-for="item in group.images" 
                 :key="item.id"
+                @mousedown.prevent="startDragSelect($event, item)"
+                @mouseenter="onDragEnter(item)"
                 @click="openDetail(item)"
                 class="group relative rounded-2xl overflow-hidden border-2 transition-all bg-white dark:bg-gray-900 cursor-pointer flex flex-col hover:shadow-md"
                 :class="[
@@ -526,6 +673,7 @@ const formatDateFull = (timestamp: number) => {
                   <img 
                     :src="item.url" 
                     loading="lazy"
+                    draggable="false"
                     class="w-full h-full object-contain transition-transform duration-300 group-hover:scale-102" 
                   />
 
