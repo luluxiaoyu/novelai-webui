@@ -5,6 +5,7 @@
   "scripts": {
     "dev:server": "pnpm --filter server run dev",
     "dev:client": "pnpm --filter client run dev",
+    "dev": "concurrently \"pnpm dev:server\" \"pnpm dev:client\"",
     "build:client": "pnpm --filter client run build",
     "build:server": "pnpm --filter server run build",
     "build": "pnpm build:client && pnpm build:server",
