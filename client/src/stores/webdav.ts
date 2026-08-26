@@ -301,18 +301,23 @@ export const useWebDAVStore = defineStore('webdav', () => {
         
         if (total > 0) {
           let count = 0;
-          for (const rImg of missingImages) {
-            count++;
-            syncText.value = `正在增量下载图片 ${count} / ${total} ...`;
-            syncProgress.value = Math.round((count / total) * 90);
-            try {
-              const b64 = await executeAction('getFileContents', rImg.remotePath);
-              rImg.url = `data:image/png;base64,${b64}`;
-              delete rImg.remotePath;
-              genStore.history.push(rImg);
-            } catch (imgErr) {
-              console.warn(`Failed to pull image ${rImg.id}:`, imgErr);
-            }
+          const BATCH_SIZE = 3; // 3张并发下载
+          for (let i = 0; i < missingImages.length; i += BATCH_SIZE) {
+            const batch = missingImages.slice(i, i + BATCH_SIZE);
+            await Promise.all(batch.map(async (rImg: any) => {
+              try {
+                const b64 = await executeAction('getFileContents', rImg.remotePath);
+                rImg.url = `data:image/png;base64,${b64}`;
+                delete rImg.remotePath;
+                genStore.history.push(rImg);
+              } catch (imgErr) {
+                console.warn(`Failed to pull image ${rImg.id}:`, imgErr);
+              } finally {
+                count++;
+                syncText.value = `正在并发下载图片 ${count} / ${total} ...`;
+                syncProgress.value = Math.round((count / total) * 90);
+              }
+            }));
           }
         }
         
@@ -364,15 +369,13 @@ export const useWebDAVStore = defineStore('webdav', () => {
         genStore.savedPromptGroups = mergeStringArrays(genStore.savedPromptGroups || [], remoteMetadata.savedPromptGroups || []);
       }
 
-      const total = (genStore.history || []).length;
       const historyForMeta: any[] = [];
+      const remoteHistoryIds = new Set((remoteMetadata?.history || []).map((h: any) => h.id));
       
-      let count = 0;
+      const imagesToUpload = (genStore.history || []).filter((img: any) => !remoteHistoryIds.has(img.id));
+      let uploadedCount = 0;
+      
       for (const img of (genStore.history || [])) {
-        count++;
-        syncText.value = `正在校验与推送图片 ${count} / ${total} ...`;
-        syncProgress.value = Math.round((count / Math.max(1, total)) * 90);
-        
         const dateFolder = new Date(img.timestamp).toISOString().split('T')[0];
         const dirPath = `${profilePath}/images/${dateFolder}`;
         const filePath = `${dirPath}/${img.id}.png`;
@@ -383,16 +386,29 @@ export const useWebDAVStore = defineStore('webdav', () => {
           timestamp: img.timestamp,
           remotePath: filePath
         });
-        
-        try {
-          const exists = await executeAction('exists', filePath);
-          if (!exists) {
-            await ensureDirectory(dirPath);
-            const b64Data = img.url.replace(/^data:image\/png;base64,/, '');
-            await executeAction('putFileContents', filePath, b64Data);
-          }
-        } catch (e) {
-          console.warn(`Failed to push image ${img.id}:`, e);
+      }
+
+      if (imagesToUpload.length > 0) {
+        const BATCH_SIZE = 3; // 3张并发上传
+        for (let i = 0; i < imagesToUpload.length; i += BATCH_SIZE) {
+          const batch = imagesToUpload.slice(i, i + BATCH_SIZE);
+          await Promise.all(batch.map(async (img: any) => {
+            const dateFolder = new Date(img.timestamp).toISOString().split('T')[0];
+            const dirPath = `${profilePath}/images/${dateFolder}`;
+            const filePath = `${dirPath}/${img.id}.png`;
+            
+            try {
+              await ensureDirectory(dirPath);
+              const b64Data = img.url.replace(/^data:image\/png;base64,/, '');
+              await executeAction('putFileContents', filePath, b64Data);
+            } catch (e) {
+              console.warn(`Failed to push image ${img.id}:`, e);
+            } finally {
+              uploadedCount++;
+              syncText.value = `正在并发推送新图片 ${uploadedCount} / ${imagesToUpload.length} ...`;
+              syncProgress.value = Math.round((uploadedCount / imagesToUpload.length) * 90);
+            }
+          }));
         }
       }
       
