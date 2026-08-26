@@ -1431,7 +1431,7 @@ watch(
 
           <!-- V4 / V4.5 / V5 多角色定位与专属提示词 (Character Prompts) -->
           <div v-if="!isV3" class="flex flex-col gap-2 p-3 bg-blue-50/60 dark:bg-blue-950/20 rounded-2xl border border-blue-100 dark:border-blue-900/40">
-            <div class="flex items-center justify-between gap-2">
+            <div class="flex flex-wrap items-center justify-between gap-2">
               <div class="flex items-center gap-1.5 shrink-0">
                 <Users class="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
                 <span class="text-xs font-bold text-gray-700 dark:text-gray-200">多角色提示词</span>
