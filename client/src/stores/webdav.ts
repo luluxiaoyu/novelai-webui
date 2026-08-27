@@ -13,6 +13,7 @@ export interface WebDAVMetadata {
   deletedCharacterIds?: string[];
   deletedStyleIds?: string[];
   deletedPromptHistoryIds?: string[];
+  deletedImageIds?: string[];
 }
 
 export const useWebDAVStore = defineStore('webdav', () => {
@@ -34,6 +35,7 @@ export const useWebDAVStore = defineStore('webdav', () => {
   const deletedCharacterIds = ref<string[]>([]);
   const deletedStyleIds = ref<string[]>([]);
   const deletedPromptHistoryIds = ref<string[]>([]);
+  const deletedImageIds = ref<string[]>([]);
   
   const authStore = useAuthStore();
   
@@ -163,7 +165,7 @@ export const useWebDAVStore = defineStore('webdav', () => {
   const _getProfilePath = () => `${config.value.basePath}/${currentProfile.value}`;
 
   // 记录删除墓碑
-  const recordDeletion = (type: 'character' | 'style' | 'promptHistory', id: string) => {
+  const recordDeletion = (type: 'character' | 'style' | 'promptHistory' | 'image', id: string) => {
     if (!id) return;
     if (type === 'character' && !deletedCharacterIds.value.includes(id)) {
       deletedCharacterIds.value.push(id);
@@ -171,6 +173,8 @@ export const useWebDAVStore = defineStore('webdav', () => {
       deletedStyleIds.value.push(id);
     } else if (type === 'promptHistory' && !deletedPromptHistoryIds.value.includes(id)) {
       deletedPromptHistoryIds.value.push(id);
+    } else if (type === 'image' && !deletedImageIds.value.includes(id)) {
+      deletedImageIds.value.push(id);
     }
   };
 
@@ -282,10 +286,12 @@ export const useWebDAVStore = defineStore('webdav', () => {
         const allDeletedChars = new Set([...deletedCharacterIds.value, ...(remoteMetadata.deletedCharacterIds || [])]);
         const allDeletedStyles = new Set([...deletedStyleIds.value, ...(remoteMetadata.deletedStyleIds || [])]);
         const allDeletedPrompts = new Set([...deletedPromptHistoryIds.value, ...(remoteMetadata.deletedPromptHistoryIds || [])]);
+        const allDeletedImages = new Set([...deletedImageIds.value, ...(remoteMetadata.deletedImageIds || [])]);
 
         deletedCharacterIds.value = Array.from(allDeletedChars);
         deletedStyleIds.value = Array.from(allDeletedStyles);
         deletedPromptHistoryIds.value = Array.from(allDeletedPrompts);
+        deletedImageIds.value = Array.from(allDeletedImages);
 
         // 增量双向合并角色库、画风库、历史词、词组（绝不丢弃本地新增）
         genStore.customCharacters = mergeObjectPresets(genStore.customCharacters || [], remoteMetadata.customCharacters || [], allDeletedChars);
@@ -293,10 +299,15 @@ export const useWebDAVStore = defineStore('webdav', () => {
         genStore.promptHistory = mergePromptHistory(genStore.promptHistory || [], remoteMetadata.promptHistory || [], allDeletedPrompts);
         genStore.savedPromptGroups = mergeStringArrays(genStore.savedPromptGroups || [], remoteMetadata.savedPromptGroups || []);
 
-        // 图片历史增量合并：下载本地缺失的云端图片，保留所有本地已有图片
-        const remoteHistory = remoteMetadata.history || [];
+        // 本地历史过滤掉已删除墓碑
+        if (Array.isArray(genStore.history)) {
+          genStore.history = genStore.history.filter((h: any) => !allDeletedImages.has(h.id));
+        }
+
+        // 图片历史增量合并：下载本地缺失的云端图片，保留所有本地已有图片（排除已删除墓碑）
+        const remoteHistory = (remoteMetadata.history || []).filter((r: any) => !allDeletedImages.has(r.id));
         const localIds = new Set((genStore.history || []).map((h: any) => h.id));
-        const missingImages = remoteHistory.filter((r: any) => !localIds.has(r.id));
+        const missingImages = remoteHistory.filter((r: any) => !localIds.has(r.id) && !allDeletedImages.has(r.id));
         const total = missingImages.length;
         
         if (total > 0) {
@@ -353,15 +364,17 @@ export const useWebDAVStore = defineStore('webdav', () => {
       const profilePath = _getProfilePath();
       const remoteMetadata = await fetchRemoteMetadata(profilePath);
 
-      // 先与云端已有数据增量合并（防止覆盖云端其他设备新增的角色/画风）
+      // 先与云端已有数据增量合并（防止覆盖云端其他设备新增的角色/画风/图片）
       if (remoteMetadata) {
         const allDeletedChars = new Set([...deletedCharacterIds.value, ...(remoteMetadata.deletedCharacterIds || [])]);
         const allDeletedStyles = new Set([...deletedStyleIds.value, ...(remoteMetadata.deletedStyleIds || [])]);
         const allDeletedPrompts = new Set([...deletedPromptHistoryIds.value, ...(remoteMetadata.deletedPromptHistoryIds || [])]);
+        const allDeletedImages = new Set([...deletedImageIds.value, ...(remoteMetadata.deletedImageIds || [])]);
 
         deletedCharacterIds.value = Array.from(allDeletedChars);
         deletedStyleIds.value = Array.from(allDeletedStyles);
         deletedPromptHistoryIds.value = Array.from(allDeletedPrompts);
+        deletedImageIds.value = Array.from(allDeletedImages);
 
         genStore.customCharacters = mergeObjectPresets(genStore.customCharacters || [], remoteMetadata.customCharacters || [], allDeletedChars);
         genStore.customStyles = mergeObjectPresets(genStore.customStyles || [], remoteMetadata.customStyles || [], allDeletedStyles);
@@ -372,10 +385,11 @@ export const useWebDAVStore = defineStore('webdav', () => {
       const historyForMeta: any[] = [];
       const remoteHistoryIds = new Set((remoteMetadata?.history || []).map((h: any) => h.id));
       
-      const imagesToUpload = (genStore.history || []).filter((img: any) => !remoteHistoryIds.has(img.id));
+      const imagesToUpload = (genStore.history || []).filter((img: any) => !remoteHistoryIds.has(img.id) && !deletedImageIds.value.includes(img.id));
       let uploadedCount = 0;
       
       for (const img of (genStore.history || [])) {
+        if (deletedImageIds.value.includes(img.id)) continue;
         const dateFolder = new Date(img.timestamp).toISOString().split('T')[0];
         const dirPath = `${profilePath}/images/${dateFolder}`;
         const filePath = `${dirPath}/${img.id}.png`;
@@ -422,7 +436,8 @@ export const useWebDAVStore = defineStore('webdav', () => {
         history: historyForMeta,
         deletedCharacterIds: deletedCharacterIds.value,
         deletedStyleIds: deletedStyleIds.value,
-        deletedPromptHistoryIds: deletedPromptHistoryIds.value
+        deletedPromptHistoryIds: deletedPromptHistoryIds.value,
+        deletedImageIds: deletedImageIds.value
       };
       
       const metaStr = JSON.stringify(metaObj, null, 2);
@@ -443,8 +458,8 @@ export const useWebDAVStore = defineStore('webdav', () => {
 
   const autoSyncSingle = async (genStore: any, img: any) => {
     if (!autoSync.value) return;
-    // 如果用户在上传开始前就已经删除了该图，直接中止
-    if (!genStore.history.some((h: any) => h.id === img.id)) return;
+    // 如果用户在上传开始前就已经删除了该图或该图已在删除墓碑中，直接中止
+    if (deletedImageIds.value.includes(img.id) || !genStore.history.some((h: any) => h.id === img.id)) return;
     try {
       const profilePath = _getProfilePath();
       const dateFolder = new Date(img.timestamp).toISOString().split('T')[0];
@@ -456,18 +471,19 @@ export const useWebDAVStore = defineStore('webdav', () => {
       await executeAction('putFileContents', filePath, b64Data);
       
       // 如果用户在上传过程中删除了该图，立即删除云端刚上传的遗留文件并中止
-      if (!genStore.history.some((h: any) => h.id === img.id)) {
+      if (deletedImageIds.value.includes(img.id) || !genStore.history.some((h: any) => h.id === img.id)) {
         try { await executeAction('deleteFile', filePath); } catch (e) {}
         return;
       }
 
-      await autoSyncMetadata(genStore);
+      await debouncedAutoSyncMetadata(genStore);
     } catch (e) {
       console.warn('Auto-sync single image failed:', e);
     }
   };
 
   const autoSyncDeleteImage = async (imgId: string, timestamp: number, genStore: any) => {
+    recordDeletion('image', imgId);
     if (!autoSync.value) return;
     try {
       const profilePath = _getProfilePath();
@@ -475,10 +491,41 @@ export const useWebDAVStore = defineStore('webdav', () => {
       const filePath = `${profilePath}/images/${dateFolder}/${imgId}.png`;
       
       try { await executeAction('deleteFile', filePath); } catch (e) {}
-      await autoSyncMetadata(genStore);
+      await debouncedAutoSyncMetadata(genStore);
     } catch (e) {
       console.warn('Auto-sync delete image failed:', e);
     }
+  };
+
+  const autoSyncDeleteImages = async (items: { id: string; timestamp: number }[], genStore: any) => {
+    for (const item of items) {
+      recordDeletion('image', item.id);
+    }
+    if (!autoSync.value || items.length === 0) return;
+    try {
+      const profilePath = _getProfilePath();
+      // 并发从云端删除对应的图片文件（忽略 404）
+      await Promise.all(items.map(async (item) => {
+        const dateFolder = new Date(item.timestamp).toISOString().split('T')[0];
+        const filePath = `${profilePath}/images/${dateFolder}/${item.id}.png`;
+        try { await executeAction('deleteFile', filePath); } catch (e) {}
+      }));
+      await debouncedAutoSyncMetadata(genStore);
+    } catch (e) {
+      console.warn('Auto-sync delete images failed:', e);
+    }
+  };
+
+  // 防抖更新云端索引，防止并发多图删除或高频操作时竞争写 metadata.json
+  let autoSyncTimer: any = null;
+  const debouncedAutoSyncMetadata = (genStore: any) => {
+    if (autoSyncTimer) clearTimeout(autoSyncTimer);
+    return new Promise<void>((resolve) => {
+      autoSyncTimer = setTimeout(async () => {
+        await autoSyncMetadata(genStore);
+        resolve();
+      }, 300);
+    });
   };
 
   /**
@@ -493,12 +540,14 @@ export const useWebDAVStore = defineStore('webdav', () => {
       const allDeletedChars = new Set([...deletedCharacterIds.value, ...(remoteMetadata?.deletedCharacterIds || [])]);
       const allDeletedStyles = new Set([...deletedStyleIds.value, ...(remoteMetadata?.deletedStyleIds || [])]);
       const allDeletedPrompts = new Set([...deletedPromptHistoryIds.value, ...(remoteMetadata?.deletedPromptHistoryIds || [])]);
+      const allDeletedImages = new Set([...deletedImageIds.value, ...(remoteMetadata?.deletedImageIds || [])]);
 
       deletedCharacterIds.value = Array.from(allDeletedChars);
       deletedStyleIds.value = Array.from(allDeletedStyles);
       deletedPromptHistoryIds.value = Array.from(allDeletedPrompts);
+      deletedImageIds.value = Array.from(allDeletedImages);
 
-      // 合并两端
+      // 合并两端预设与历史词
       const mergedCharacters = mergeObjectPresets(genStore.customCharacters || [], remoteMetadata?.customCharacters || [], allDeletedChars);
       const mergedStyles = mergeObjectPresets(genStore.customStyles || [], remoteMetadata?.customStyles || [], allDeletedStyles);
       const mergedPrompts = mergePromptHistory(genStore.promptHistory || [], remoteMetadata?.promptHistory || [], allDeletedPrompts);
@@ -510,12 +559,14 @@ export const useWebDAVStore = defineStore('webdav', () => {
       genStore.promptHistory = mergedPrompts;
       genStore.savedPromptGroups = mergedGroups;
 
-      const historyForMeta = (genStore.history || []).map((h: any) => ({
-        id: h.id,
-        params: h.params,
-        timestamp: h.timestamp,
-        remotePath: `${profilePath}/images/${new Date(h.timestamp).toISOString().split('T')[0]}/${h.id}.png`
-      }));
+      const historyForMeta = (genStore.history || [])
+        .filter((h: any) => !allDeletedImages.has(h.id))
+        .map((h: any) => ({
+          id: h.id,
+          params: h.params,
+          timestamp: h.timestamp,
+          remotePath: `${profilePath}/images/${new Date(h.timestamp).toISOString().split('T')[0]}/${h.id}.png`
+        }));
 
       const metaObj: WebDAVMetadata = {
         updatedAt: Date.now(),
@@ -526,7 +577,8 @@ export const useWebDAVStore = defineStore('webdav', () => {
         history: historyForMeta,
         deletedCharacterIds: deletedCharacterIds.value,
         deletedStyleIds: deletedStyleIds.value,
-        deletedPromptHistoryIds: deletedPromptHistoryIds.value
+        deletedPromptHistoryIds: deletedPromptHistoryIds.value,
+        deletedImageIds: deletedImageIds.value
       };
 
       const metaB64 = btoa(unescape(encodeURIComponent(JSON.stringify(metaObj, null, 2))));
@@ -547,6 +599,7 @@ export const useWebDAVStore = defineStore('webdav', () => {
     deletedCharacterIds,
     deletedStyleIds,
     deletedPromptHistoryIds,
+    deletedImageIds,
     testConnection,
     loadProfiles,
     createProfile,
@@ -557,11 +610,13 @@ export const useWebDAVStore = defineStore('webdav', () => {
     syncUp,
     autoSyncSingle,
     autoSyncDeleteImage,
+    autoSyncDeleteImages,
     autoSyncMetadata,
+    debouncedAutoSyncMetadata,
     _getProfilePath
   };
 }, {
   persist: {
-    pick: ['config', 'currentProfile', 'autoSync', 'deletedCharacterIds', 'deletedStyleIds', 'deletedPromptHistoryIds']
+    pick: ['config', 'currentProfile', 'autoSync', 'deletedCharacterIds', 'deletedStyleIds', 'deletedPromptHistoryIds', 'deletedImageIds']
   }
 });

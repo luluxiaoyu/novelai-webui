@@ -40,7 +40,17 @@ export const webdavAction = async (req: Request, res: Response) => {
         result = await client.putFileContents(path, putBuffer, { overwrite: true });
         break;
       case 'deleteFile':
-        result = await client.deleteFile(path);
+        try {
+          result = await client.deleteFile(path);
+        } catch (delErr: any) {
+          // If file does not exist (404 or not found), treat as success
+          const errStr = String(delErr?.message || delErr?.status || delErr || '');
+          if (delErr?.status === 404 || delErr?.response?.status === 404 || errStr.includes('404') || errStr.toLowerCase().includes('not found')) {
+            result = true;
+          } else {
+            throw delErr;
+          }
+        }
         break;
       default:
         return res.status(400).json({ error: `Unknown action: ${action}` });

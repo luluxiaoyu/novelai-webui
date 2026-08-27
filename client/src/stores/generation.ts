@@ -106,9 +106,14 @@ export const useGenerationStore = defineStore('generation', () => {
   
   // 保存当前历史到 IndexedDB (严格持久化当前状态，防止已删除项重新复活)
   let isSavingIDB = false;
+  let hasPendingSave = false;
   const saveHistoryToIDB = async () => {
-    if (isSavingIDB) return;
+    if (isSavingIDB) {
+      hasPendingSave = true;
+      return;
+    }
     isSavingIDB = true;
+    hasPendingSave = false;
     try {
       const list = history.value.slice(0, 100);
       await idbStorage.setItem('history', JSON.stringify(list));
@@ -116,6 +121,9 @@ export const useGenerationStore = defineStore('generation', () => {
       console.error('Failed to save history to IDB:', e);
     } finally {
       isSavingIDB = false;
+      if (hasPendingSave) {
+        saveHistoryToIDB();
+      }
     }
   };
 
@@ -877,6 +885,30 @@ export const useGenerationStore = defineStore('generation', () => {
     }
   };
 
+  const deleteBatchHistory = (ids: string[]) => {
+    if (!ids || ids.length === 0) return;
+    const idSet = new Set(ids);
+    const deletedItems = history.value.filter(i => idSet.has(i.id));
+    history.value = history.value.filter(i => !idSet.has(i.id));
+    if (currentImage.value && idSet.has(currentImage.value.id)) {
+      currentImage.value = history.value.length > 0 ? history.value[0] : null;
+    }
+    saveHistoryToIDB();
+    if (tabSyncChannel) {
+      try {
+        for (const id of ids) {
+          tabSyncChannel.postMessage({ type: 'DELETE_IMAGE', id });
+        }
+      } catch (e) {}
+    }
+    if (deletedItems.length > 0) {
+      useWebDAVStore().autoSyncDeleteImages(
+        deletedItems.map(i => ({ id: i.id, timestamp: i.timestamp })),
+        useGenerationStore()
+      );
+    }
+  };
+
   const addCharacter = () => {
     if (!params.characters) params.characters = [];
     const count = params.characters.length;
@@ -925,6 +957,7 @@ export const useGenerationStore = defineStore('generation', () => {
   };
 
   const clearHistory = () => {
+    const deletedItems = [...history.value];
     history.value = [];
     currentImage.value = null;
     saveHistoryToIDB();
@@ -933,11 +966,17 @@ export const useGenerationStore = defineStore('generation', () => {
         tabSyncChannel.postMessage({ type: 'CLEAR_HISTORY' });
       } catch (e) {}
     }
-    useWebDAVStore().autoSyncMetadata(useGenerationStore());
+    if (deletedItems.length > 0) {
+      useWebDAVStore().autoSyncDeleteImages(
+        deletedItems.map(i => ({ id: i.id, timestamp: i.timestamp })),
+        useGenerationStore()
+      );
+    }
   };
 
   const clearFilteredHistory = (idsToKeep: string[]) => {
     const idSet = new Set(idsToKeep);
+    const deletedItems = history.value.filter(item => !idSet.has(item.id));
     history.value = history.value.filter(item => idSet.has(item.id));
     if (currentImage.value && !idSet.has(currentImage.value.id)) {
       currentImage.value = history.value.length > 0 ? history.value[0] : null;
@@ -948,7 +987,12 @@ export const useGenerationStore = defineStore('generation', () => {
         tabSyncChannel.postMessage({ type: 'KEEP_IMAGES', ids: idsToKeep });
       } catch (e) {}
     }
-    useWebDAVStore().autoSyncMetadata(useGenerationStore());
+    if (deletedItems.length > 0) {
+      useWebDAVStore().autoSyncDeleteImages(
+        deletedItems.map(i => ({ id: i.id, timestamp: i.timestamp })),
+        useGenerationStore()
+      );
+    }
   };
 
   return { 
@@ -977,6 +1021,7 @@ export const useGenerationStore = defineStore('generation', () => {
     updatePromptNote,
     updatePromptGroup,
     deleteHistory,
+    deleteBatchHistory,
     clearHistory,
     clearFilteredHistory,
     resetAdvancedParams,

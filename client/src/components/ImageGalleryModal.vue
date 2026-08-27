@@ -386,9 +386,7 @@ const deleteBatch = () => {
   if (selectedIds.value.size === 0) return;
   if (confirm(`确定要删除选中的 ${selectedIds.value.size} 张图片吗？此操作将同步从本地与云端删除。`)) {
     const idsToDelete = Array.from(selectedIds.value);
-    for (const id of idsToDelete) {
-      genStore.deleteHistory(id);
-    }
+    genStore.deleteBatchHistory(idsToDelete);
     selectedIds.value.clear();
     isBatchMode.value = false;
   }
