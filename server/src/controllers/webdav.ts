@@ -31,9 +31,17 @@ export const webdavAction = async (req: Request, res: Response) => {
         break;
       case 'getFileContents':
         // Download as ArrayBuffer and encode as base64 to transport over JSON easily
-        const buffer = await client.getFileContents(path, { format: 'binary' });
-        const b64 = Buffer.from(buffer as ArrayBuffer).toString('base64');
-        return res.json({ success: true, data: b64 });
+        try {
+          const buffer = await client.getFileContents(path, { format: 'binary' });
+          const b64 = Buffer.from(buffer as ArrayBuffer).toString('base64');
+          return res.json({ success: true, data: b64 });
+        } catch (getErr: any) {
+          const errStr = String(getErr?.message || getErr?.status || getErr || '');
+          if (getErr?.status === 404 || getErr?.response?.status === 404 || errStr.includes('404') || errStr.toLowerCase().includes('not found')) {
+            return res.json({ success: true, data: null });
+          }
+          throw getErr;
+        }
       case 'putFileContents':
         if (!data) return res.status(400).json({ error: 'Missing file data' });
         const putBuffer = Buffer.from(data, 'base64');

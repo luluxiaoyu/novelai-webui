@@ -178,14 +178,36 @@ export const useWebDAVStore = defineStore('webdav', () => {
     }
   };
 
+// UTF-8 安全的 Base64 编解码器（支持任意大文本与各种特殊字符、Emoji）
+const stringToBase64 = (str: string): string => {
+  const bytes = new TextEncoder().encode(str);
+  let binary = '';
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.byteLength; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode.apply(null, chunk as any);
+  }
+  return btoa(binary);
+};
+
+const base64ToString = (b64: string): string => {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new TextDecoder('utf-8').decode(bytes);
+};
+
   // 从远端获取 metadata.json
   const fetchRemoteMetadata = async (profilePath: string): Promise<WebDAVMetadata | null> => {
     try {
       const metaB64 = await executeAction('getFileContents', `${profilePath}/metadata.json`);
       if (!metaB64) return null;
-      const jsonStr = decodeURIComponent(escape(atob(metaB64)));
+      const jsonStr = base64ToString(metaB64);
       return JSON.parse(jsonStr);
     } catch (e) {
+      console.warn('Fetch remote metadata failed:', e);
       return null;
     }
   };
@@ -441,7 +463,7 @@ export const useWebDAVStore = defineStore('webdav', () => {
       };
       
       const metaStr = JSON.stringify(metaObj, null, 2);
-      const metaB64 = btoa(unescape(encodeURIComponent(metaStr)));
+      const metaB64 = stringToBase64(metaStr);
       await executeAction('putFileContents', `${profilePath}/metadata.json`, metaB64);
       
       syncProgress.value = 100;
@@ -581,7 +603,7 @@ export const useWebDAVStore = defineStore('webdav', () => {
         deletedImageIds: deletedImageIds.value
       };
 
-      const metaB64 = btoa(unescape(encodeURIComponent(JSON.stringify(metaObj, null, 2))));
+      const metaB64 = stringToBase64(JSON.stringify(metaObj, null, 2));
       await executeAction('putFileContents', `${profilePath}/metadata.json`, metaB64);
     } catch (e) {
       console.warn('Auto-sync metadata failed:', e);
