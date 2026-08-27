@@ -75,20 +75,58 @@ async function inflateBytes(bytes: Uint8Array): Promise<Uint8Array> {
   return bytes;
 }
 
+
+function fixJsonString(jsonStr: string): string {
+  let inString = false;
+  let escapeNext = false;
+  let result = '';
+  for (let i = 0; i < jsonStr.length; i++) {
+    const char = jsonStr[i];
+    if (inString) {
+      if (escapeNext) {
+        escapeNext = false;
+        result += char;
+      } else if (char === '\\') {
+        escapeNext = true;
+        result += char;
+      } else if (char === '"') {
+        inString = false;
+        result += char;
+      } else if (char === '\n') {
+        result += '\\n';
+      } else if (char === '\r') {
+        result += '\\r';
+      } else if (char === '\t') {
+        result += '\\t';
+      } else if (char.charCodeAt(0) < 32) {
+        // skip other control chars
+      } else {
+        result += char;
+      }
+    } else {
+      if (char === '"') {
+        inString = true;
+      }
+      result += char;
+    }
+  }
+  return result;
+}
+
 // 从 SD WebUI / Forge / Fooocus / NovelAI WebUI 常见 parameters 格式字符串中解析参数
 function parseParametersText(text: string, result: ParsedImageMetadata) {
   if (!text || typeof text !== 'string') return;
 
-  const trimmed = text.trim();
+  const trimmed = text.replace(/\0/g, '').trim();
   if (!trimmed) return;
 
   // 1. 尝试直接作为 JSON 解析 (NovelAI Comment 格式)
   if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
     try {
-      const obj = JSON.parse(trimmed);
+      const obj = JSON.parse(fixJsonString(trimmed));
       parseNovelAIJson(obj, result);
       return;
-    } catch {}
+    } catch (e) { console.warn('NovelAI JSON parse failed:', e); }
   }
 
   // 2. 尝试解析 ComfyUI Prompt / Workflow JSON
@@ -516,8 +554,100 @@ function parseXmpText(xmp: string, result: ParsedImageMetadata) {
   }
 }
 
+
+class StealthDataReader {
+    data: number[]
+    index: number
+    constructor(data: number[]) { this.data = data; this.index = 0; }
+    readBit() { return this.data[this.index++]; }
+    readNBits(n: number) {
+        let bits: number[] = [];
+        for (let i = 0; i < n; i++) bits.push(this.readBit());
+        return bits;
+    }
+    readByte() {
+        let byte = 0;
+        for (let i = 0; i < 8; i++) byte |= this.readBit() << (7 - i);
+        return byte;
+    }
+    readNBytes(n: number) {
+        let bytes: number[] = [];
+        for (let i = 0; i < n; i++) bytes.push(this.readByte());
+        return bytes;
+    }
+    readInt32() {
+        let bytes = this.readNBytes(4);
+        return new DataView(new Uint8Array(bytes).buffer).getInt32(0, false);
+    }
+}
+
+async function tryExtractStealthPngInfo(arrayBuffer: ArrayBuffer, result: ParsedImageMetadata) {
+  if (typeof document === 'undefined') return;
+  try {
+    const blob = new Blob([arrayBuffer], { type: 'image/png' });
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = reject;
+      img.src = url;
+    });
+    URL.revokeObjectURL(url);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+    ctx.drawImage(img, 0, 0);
+
+    const imageData = ctx.getImageData(0, 0, img.width, img.height);
+    let lowestData: number[] = [];
+    for (let x = 0; x < img.width; x++) {
+        for (let y = 0; y < img.height; y++) {
+            let index = (y * img.width + x) * 4;
+            let a = imageData.data[index + 3];
+            lowestData.push(a & 1);
+        }
+    }
+
+    const reader = new StealthDataReader(lowestData);
+    const magicComp = "stealth_pngcomp";
+    const readMagic1 = reader.readNBytes(magicComp.length);
+    const magicString1 = String.fromCharCode.apply(null, readMagic1);
+
+    if (magicString1 === magicComp) {
+        const dataLength = reader.readInt32();
+        const gzipData = reader.readNBytes(dataLength / 8);
+        const ds = new DecompressionStream('gzip');
+        const stream = new Blob([new Uint8Array(gzipData)]).stream().pipeThrough(ds);
+        const buffer = await new Response(stream).arrayBuffer();
+        const jsonString = new TextDecoder().decode(buffer);
+        try { const wrapper = JSON.parse(jsonString); if (wrapper.Comment) { parseParametersText(wrapper.Comment, result); return; } } catch(e){}
+        parseParametersText(jsonString, result);
+        return;
+    }
+
+    const reader2 = new StealthDataReader(lowestData);
+    const magicInfo = "stealth_pnginfo";
+    const readMagic2 = reader2.readNBytes(magicInfo.length);
+    const magicString2 = String.fromCharCode.apply(null, readMagic2);
+    if (magicString2 === magicInfo) {
+        const dataLength = reader2.readInt32();
+        const rawData = reader2.readNBytes(dataLength / 8);
+        const jsonString = new TextDecoder().decode(new Uint8Array(rawData));
+        try { const wrapper = JSON.parse(jsonString); if (wrapper.Comment) { parseParametersText(wrapper.Comment, result); return; } } catch(e){}
+        parseParametersText(jsonString, result);
+        return;
+    }
+  } catch(e) {
+    console.warn('Stealth decoding failed:', e);
+  }
+}
+
 /**
- * 通用多格式图像元数据提取器 (PNG / JPEG / WebP)
+ * 通用多格式图像元数据提取器
+ (PNG / JPEG / WebP)
  * 深度兼容 NovelAI (V3/V4/V4.5/V5 多角色坐标)、Stable Diffusion WebUI、ComfyUI、Fooocus、Forge 格式
  */
 export async function parsePngMetadata(arrayBuffer: ArrayBuffer): Promise<ParsedImageMetadata> {
@@ -534,6 +664,10 @@ export async function parsePngMetadata(arrayBuffer: ArrayBuffer): Promise<Parsed
       uint8[4] === 0x0d && uint8[5] === 0x0a && uint8[6] === 0x1a && uint8[7] === 0x0a
     ) {
       await parsePng(uint8, data, result);
+      // 如果标准 PNG 块没有找到元数据，尝试 Stealth PNG Info（像素 Alpha LSB 隐写）
+      if (!result.hasMetadata) {
+        await tryExtractStealthPngInfo(arrayBuffer, result);
+      }
       return result;
     }
 
@@ -558,6 +692,11 @@ export async function parsePngMetadata(arrayBuffer: ArrayBuffer): Promise<Parsed
     const textPreview = decoder.decode(uint8.subarray(0, Math.min(uint8.length, 65536)));
     if (textPreview.includes('prompt') || textPreview.includes('Steps:') || textPreview.includes('NovelAI')) {
       parseParametersText(textPreview, result);
+    }
+
+    // 5. 终极兜底：如果常规方法完全没有提取到元数据，且是 PNG，尝试读取 Stealth PNG Info
+    if (!result.hasMetadata && uint8[0] === 0x89 && uint8[1] === 0x50) {
+      await tryExtractStealthPngInfo(arrayBuffer, result);
     }
   } catch (e) {
     console.warn('Universal Image metadata extraction failed:', e);
