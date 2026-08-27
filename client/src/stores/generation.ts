@@ -42,6 +42,7 @@ export interface GenerationParams {
   strength?: number;
   noise?: number;
   auto_quality_presets?: boolean;
+  transparent_bg?: boolean;
 }
 
 export const OFFICIAL_V5_POS_PRESET = ', no text, best quality, very aesthetic, absurdres, very aesthetic, masterpiece, no text';
@@ -207,6 +208,7 @@ export const useGenerationStore = defineStore('generation', () => {
     characters: [],
     use_coords: false,
     auto_quality_presets: true,
+    transparent_bg: false,
   });
 
   const history = ref<GeneratedImage[]>([]);
@@ -338,6 +340,13 @@ export const useGenerationStore = defineStore('generation', () => {
       // 自动追加官方画质预设（正向追加 best quality 等，负向追加官方 Heavy UC，不污染前端输入框）
       let finalPrompt = (params.prompt || '').trim();
       let finalNegPrompt = (params.negative_prompt || '').trim();
+
+      if (params.transparent_bg && !finalPrompt.includes('transparent background')) {
+        if (finalPrompt && !finalPrompt.endsWith(',')) {
+          finalPrompt += ', ';
+        }
+        finalPrompt += 'transparent background';
+      }
 
       if (params.auto_quality_presets !== false) {
         if (finalPrompt && !finalPrompt.includes('very aesthetic') && !finalPrompt.includes('absurdres')) {
@@ -912,6 +921,7 @@ export const useGenerationStore = defineStore('generation', () => {
     params.characters = [];
     params.use_coords = false;
     params.auto_quality_presets = true;
+    params.transparent_bg = false;
   };
 
   const clearHistory = () => {

@@ -61,6 +61,28 @@ const copyText = (text: string, key: string) => {
   triggerCopyFeedback(key);
 };
 
+const displayPrompt = computed(() => {
+  if (!selectedImage.value) return '';
+  let p = selectedImage.value.params.prompt || '';
+  if (selectedImage.value.params.transparent_bg) {
+    p = p.trim();
+    if (p && !p.endsWith(',')) p += ', ';
+    p += 'transparent background';
+  }
+  return p;
+});
+
+const getDisplayPrompt = (item: any) => {
+  if (!item) return '';
+  let p = item.params.prompt || '';
+  if (item.params.transparent_bg) {
+    p = p.trim();
+    if (p && !p.endsWith(',')) p += ', ';
+    p += 'transparent background';
+  }
+  return p;
+};
+
 // 活跃日期提取 (用于自定义日期快捷选择)
 const activeDates = computed(() => {
   const map = new Map<string, number>();
@@ -696,8 +718,8 @@ const formatDateFull = (timestamp: number) => {
 
                 <!-- 底部常驻信息与操作栏 (移动端直观可点，绝不依赖 Hover) -->
                 <div v-if="viewMode === 'grid'" class="p-2.5 bg-white dark:bg-gray-900 flex flex-col gap-1.5 border-t border-gray-100 dark:border-gray-800 text-xs">
-                  <div class="truncate font-mono text-gray-600 dark:text-gray-300 text-[11px]" :title="item.params.prompt">
-                    {{ item.params.prompt || '无提示词' }}
+                  <div class="truncate font-mono text-gray-600 dark:text-gray-300 text-[11px]" :title="getDisplayPrompt(item)">
+                    {{ getDisplayPrompt(item) || '无提示词' }}
                   </div>
                   <div class="flex items-center justify-between text-[10px] text-gray-400 font-mono">
                     <span>Seed: {{ item.params.seed || '随机' }}</span>
@@ -838,7 +860,7 @@ const formatDateFull = (timestamp: number) => {
               <div class="flex justify-between items-center">
                 <label class="text-xs font-bold text-gray-600 dark:text-gray-400">正向提示词 (Prompt)</label>
                 <button 
-                  @click="copyText(selectedImage.params.prompt, 'prompt')"
+                  @click="copyText(displayPrompt, 'prompt')"
                   class="text-[11px] text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 font-medium"
                 >
                   <Check v-if="copiedKey === 'prompt'" class="w-3 h-3 text-green-500" />
@@ -847,7 +869,7 @@ const formatDateFull = (timestamp: number) => {
                 </button>
               </div>
               <div class="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 text-xs font-mono text-gray-800 dark:text-gray-200 max-h-28 overflow-y-auto custom-scrollbar select-text">
-                {{ selectedImage.params.prompt || '(无正向提示词)' }}
+                {{ displayPrompt || '(无正向提示词)' }}
               </div>
             </div>
 

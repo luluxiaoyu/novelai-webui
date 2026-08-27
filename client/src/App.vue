@@ -1068,6 +1068,8 @@ const copyImageToClipboard = async () => {
   }
 };
 
+const isV5Model = computed(() => genStore.params.model.startsWith('nai-diffusion-5'));
+
 const fillOfficialUC = () => {
   const officialUC = "lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, blurry, lowres, error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, multiple views, logo, too many watermarks, lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry, bad feet, username, {bad}, fewer, extra, watermark, unfinished,displeasing, chromatic aberration, signature, extra digits, artistic error, scan, [abstract],logo,{big belly},";
   
@@ -1447,6 +1449,20 @@ watch(
               :min-height="80"
               placeholder="1girl, masterpiece, best quality, highly detailed, beautiful lighting..."
             />
+
+            <!-- 快捷标签行 -->
+            <div class="flex items-center mt-2" v-if="isV5Model">
+              <button 
+                @click="genStore.params.transparent_bg = !genStore.params.transparent_bg"
+                :class="genStore.params.transparent_bg ? 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800/60' : 'bg-gray-100/80 text-gray-500 border-gray-200 dark:bg-gray-800/80 dark:text-gray-400 dark:border-gray-700 hover:bg-gray-200 dark:hover:bg-gray-700'"
+                class="flex items-center gap-1.5 px-3 py-1 rounded-full border text-[11px] font-medium transition-colors"
+                title="在提示词末尾（画质词之前）自动隐式追加 transparent background"
+              >
+                <X v-if="!genStore.params.transparent_bg" class="w-3.5 h-3.5 opacity-70" />
+                <Check v-else class="w-3.5 h-3.5" />
+                透明背景 (Transparent BG)
+              </button>
+            </div>
           </div>
 
           <div>
