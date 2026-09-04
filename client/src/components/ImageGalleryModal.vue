@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useGenerationStore, type GeneratedImage } from '../stores/generation';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { 
   X, Search, Calendar, Download, Trash2, SlidersHorizontal, 
   Paintbrush, Copy, Check, Archive, CheckSquare, Square, 
-  ChevronLeft, ChevronRight, Grid, 
+  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Grid, 
   Layers, Clock, ArrowUpDown
 } from 'lucide-vue-next';
 
@@ -153,12 +153,89 @@ const filteredImages = computed(() => {
   return list;
 });
 
-// 按日期分组聚合
+// 传统经典分页控制
+const currentPage = ref(1);
+const pageSize = ref<number | 'all'>(36);
+const pageSizeOptions: { label: string; value: number | 'all' }[] = [
+  { label: '24 张/页', value: 24 },
+  { label: '36 张/页', value: 36 },
+  { label: '48 张/页', value: 48 },
+  { label: '96 张/页', value: 96 },
+  { label: '全部显示', value: 'all' }
+];
+
+const totalCount = computed(() => filteredImages.value.length);
+
+const totalPages = computed(() => {
+  if (pageSize.value === 'all' || totalCount.value === 0) return 1;
+  return Math.ceil(totalCount.value / Number(pageSize.value));
+});
+
+// 当前页切片展示的图片列表
+const pagedImages = computed(() => {
+  if (pageSize.value === 'all') return filteredImages.value;
+  const size = Number(pageSize.value);
+  const start = (currentPage.value - 1) * size;
+  return filteredImages.value.slice(start, start + size);
+});
+
+// 智能数字页码列表 (带省略号 '...')
+const visiblePages = computed(() => {
+  const total = totalPages.value;
+  const current = currentPage.value;
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+  const pages: (number | string)[] = [];
+  pages.push(1);
+  if (current > 4) {
+    pages.push('...');
+  }
+  const start = Math.max(2, current - 2);
+  const end = Math.min(total - 1, current + 2);
+  for (let i = start; i <= end; i++) {
+    pages.push(i);
+  }
+  if (current < total - 3) {
+    pages.push('...');
+  }
+  pages.push(total);
+  return pages;
+});
+
+const goToPage = (page: number) => {
+  if (page < 1) page = 1;
+  if (page > totalPages.value) page = totalPages.value;
+  currentPage.value = page;
+};
+
+const jumpPageInput = ref('');
+const handleJumpPage = () => {
+  const pageNum = parseInt(jumpPageInput.value.trim(), 10);
+  if (!isNaN(pageNum) && pageNum >= 1 && pageNum <= totalPages.value) {
+    goToPage(pageNum);
+    jumpPageInput.value = '';
+  }
+};
+
+// 当筛选条件或每页条数改变时，自动重置回第 1 页
+watch([timeFilter, customStartDate, customEndDate, searchQuery, sortOrder, pageSize], () => {
+  currentPage.value = 1;
+});
+
+// 监听总页数收缩（如批量删除后），防止当前页码越界
+watch(totalPages, (newTotal) => {
+  if (currentPage.value > newTotal && newTotal > 0) {
+    currentPage.value = newTotal;
+  }
+});
+
+// 按日期分组聚合 (只对当前分页 pagedImages 进行聚合渲染，保障极限流畅)
 const groupedImages = computed(() => {
   const groups: { dateStr: string; images: GeneratedImage[] }[] = [];
   const map = new Map<string, GeneratedImage[]>();
 
-  for (const img of filteredImages.value) {
+  for (const img of pagedImages.value) {
     const d = new Date(img.timestamp);
     const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     if (!map.has(dateStr)) {
@@ -273,6 +350,11 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyDown);
   window.removeEventListener('mouseup', stopDragSelect);
 });
+
+// 全选当前页
+const selectCurrentPage = () => {
+  pagedImages.value.forEach(img => selectedIds.value.add(img.id));
+};
 
 // 全选当前过滤结果
 const selectAll = () => {
@@ -613,6 +695,7 @@ const formatDateFull = (timestamp: number) => {
           </div>
           
           <div class="flex items-center gap-2">
+            <button @click="selectCurrentPage" class="px-2.5 py-1.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm hover:border-purple-400 dark:hover:border-purple-500 hover:text-purple-600 transition font-medium">全选当前页 ({{ pagedImages.length }})</button>
             <button @click="selectAll" class="px-2.5 py-1.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm hover:border-purple-400 dark:hover:border-purple-500 hover:text-purple-600 transition font-medium">全选当前筛选 ({{ filteredImages.length }})</button>
             <button @click="selectAllHistory" class="px-2.5 py-1.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm hover:border-purple-400 dark:hover:border-purple-500 hover:text-purple-600 transition font-medium">全选所有历史 ({{ genStore.history.length }})</button>
             <button @click="invertSelection" class="px-2.5 py-1.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm hover:border-purple-400 dark:hover:border-purple-500 hover:text-purple-600 transition font-medium">反选当前</button>
@@ -768,6 +851,117 @@ const formatDateFull = (timestamp: number) => {
           </section>
         </div>
       </div>
+
+      <!-- 传统分页控制底栏 (Pagination Bar) -->
+      <footer 
+        v-if="filteredImages.length > 0"
+        class="px-4 sm:px-6 py-3 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0 select-none z-10"
+      >
+        <!-- 左侧：数量信息与每页条数选择 -->
+        <div class="flex items-center gap-3 text-gray-500 dark:text-gray-400">
+          <span>
+            共 <strong class="text-gray-800 dark:text-gray-200 font-semibold font-mono">{{ totalCount }}</strong> 张
+            <template v-if="totalPages > 1">
+              · 第 <strong class="text-purple-600 dark:text-purple-400 font-semibold font-mono">{{ currentPage }}</strong> / {{ totalPages }} 页
+            </template>
+          </span>
+          <div class="flex items-center gap-1.5">
+            <span class="text-gray-400">每页:</span>
+            <select
+              v-model="pageSize"
+              class="px-2 py-1 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-purple-500 text-xs cursor-pointer"
+            >
+              <option v-for="opt in pageSizeOptions" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </option>
+            </select>
+          </div>
+        </div>
+
+        <!-- 右侧：翻页按钮与跳页控制 -->
+        <div v-if="totalPages > 1" class="flex items-center gap-1.5 flex-wrap">
+          <!-- 首页 -->
+          <button
+            @click="goToPage(1)"
+            :disabled="currentPage === 1"
+            class="p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:pointer-events-none transition"
+            title="第一页"
+          >
+            <ChevronsLeft class="w-3.5 h-3.5" />
+          </button>
+
+          <!-- 上一页 -->
+          <button
+            @click="goToPage(currentPage - 1)"
+            :disabled="currentPage === 1"
+            class="px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:pointer-events-none transition flex items-center gap-1"
+            title="上一页"
+          >
+            <ChevronLeft class="w-3.5 h-3.5" />
+            <span class="hidden sm:inline">上一页</span>
+          </button>
+
+          <!-- 数字页码按钮 -->
+          <div class="flex items-center gap-1">
+            <template v-for="(p, idx) in visiblePages" :key="idx">
+              <span v-if="p === '...'" class="px-1.5 text-gray-400">...</span>
+              <button
+                v-else
+                @click="goToPage(p as number)"
+                :class="[
+                  'min-w-[28px] h-7 px-2 rounded-lg font-mono text-xs font-medium transition flex items-center justify-center',
+                  currentPage === p
+                    ? 'bg-purple-600 text-white shadow-sm'
+                    : 'border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+                ]"
+              >
+                {{ p }}
+              </button>
+            </template>
+          </div>
+
+          <!-- 下一页 -->
+          <button
+            @click="goToPage(currentPage + 1)"
+            :disabled="currentPage === totalPages"
+            class="px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:pointer-events-none transition flex items-center gap-1"
+            title="下一页"
+          >
+            <span class="hidden sm:inline">下一页</span>
+            <ChevronRight class="w-3.5 h-3.5" />
+          </button>
+
+          <!-- 末页 -->
+          <button
+            @click="goToPage(totalPages)"
+            :disabled="currentPage === totalPages"
+            class="p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:pointer-events-none transition"
+            title="最后一页"
+          >
+            <ChevronsRight class="w-3.5 h-3.5" />
+          </button>
+
+          <!-- 跳页输入框 -->
+          <div class="flex items-center gap-1 ml-2">
+            <span class="text-gray-400">跳至</span>
+            <input
+              v-model="jumpPageInput"
+              type="text"
+              inputmode="numeric"
+              pattern="[0-9]*"
+              class="w-11 px-1.5 py-1 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md text-center text-gray-800 dark:text-gray-200 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-purple-500"
+              @keydown.enter="handleJumpPage"
+            />
+            <span class="text-gray-400">页</span>
+            <button
+              @click="handleJumpPage"
+              class="px-2 py-1 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 rounded-md transition"
+            >
+              确定
+            </button>
+          </div>
+        </div>
+      </footer>
     </div>
 
     <!-- 大图与全部参数透视弹窗 (Lightbox Detail Inspector) -->

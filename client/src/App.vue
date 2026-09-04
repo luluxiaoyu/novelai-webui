@@ -12,6 +12,7 @@ import StyleLibraryModal from './components/StyleLibraryModal.vue';
 import PromptTextarea from './components/PromptTextarea.vue';
 import PromptEditorModal from './components/PromptEditorModal.vue';
 import ImageGalleryModal from './components/ImageGalleryModal.vue';
+import StorageMigrationModal from './components/StorageMigrationModal.vue';
 import { parsePngMetadata, type ParsedImageMetadata } from './utils/pngMetadata';
 import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Palette, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud, Cloud, Wifi, Sparkles, ChevronDown, ChevronUp, RotateCcw, FileText, Plus, Minus, Users, User, UserPlus, Clock, Maximize2, HelpCircle } from 'lucide-vue-next';
 
@@ -2929,6 +2930,9 @@ watch(
       v-model="showImageGallery" 
       @send-inpaint="handleGalleryInpaint" 
     />
+
+    <!-- 存储架构升级迁移弹窗 (用户确认与实时进度) -->
+    <StorageMigrationModal />
 
     <!-- 页面拖拽悬浮提示遮罩 -->
     <div 

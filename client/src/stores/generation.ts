@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref, reactive } from 'vue';
+import { ref, reactive, toRaw } from 'vue';
 import { encryptedAxios, encryptedFetchStream } from '../utils/api';
 import JSZip from 'jszip';
 import { useAuthStore } from './auth';
@@ -59,36 +59,164 @@ export interface GeneratedImage {
 
 
 
+const DB_NAME = 'novelai_db';
+const DB_VERSION = 2;
+
+const openDB = (): Promise<IDBDatabase> => {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains('store')) {
+        db.createObjectStore('store');
+      }
+      if (!db.objectStoreNames.contains('images')) {
+        const imgStore = db.createObjectStore('images', { keyPath: 'id' });
+        imgStore.createIndex('timestamp', 'timestamp', { unique: false });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+};
+
+const toCloneableImage = (rawImg: any): GeneratedImage => {
+  // 深度剥离 Vue 响应式 Proxy 包装与内部符号，生成 100% 纯净可克隆普通对象
+  let plain: any;
+  try {
+    plain = JSON.parse(JSON.stringify(toRaw(rawImg) || {}));
+  } catch {
+    plain = { ...rawImg };
+  }
+  return {
+    id: String(plain.id || `${plain.timestamp || Date.now()}-${Math.random().toString(36).substring(2, 9)}`),
+    url: String(plain.url || ''),
+    params: plain.params || {},
+    timestamp: typeof plain.timestamp === 'number' ? plain.timestamp : Date.now(),
+    isNew: Boolean(plain.isNew)
+  };
+};
+
 const idbStorage = {
   getItem: async (key: string): Promise<string | null> => {
+    const db = await openDB();
     return new Promise((resolve, reject) => {
-      const request = indexedDB.open('novelai_db', 1);
-      request.onupgradeneeded = () => { request.result.createObjectStore('store'); };
-      request.onsuccess = () => {
-        const db = request.result;
-        if (!db.objectStoreNames.contains('store')) { resolve(null); return; }
-        const tx = db.transaction('store', 'readonly');
-        const getReq = tx.objectStore('store').get(key);
-        getReq.onsuccess = () => resolve(getReq.result || null);
-        getReq.onerror = () => reject(getReq.error);
-      };
-      request.onerror = () => reject(request.error);
+      if (!db.objectStoreNames.contains('store')) { resolve(null); return; }
+      const tx = db.transaction('store', 'readonly');
+      const getReq = tx.objectStore('store').get(key);
+      getReq.onsuccess = () => resolve(getReq.result || null);
+      getReq.onerror = () => reject(getReq.error);
     });
   },
   setItem: async (key: string, value: string): Promise<void> => {
+    const db = await openDB();
     return new Promise((resolve, reject) => {
-      const request = indexedDB.open('novelai_db', 1);
-      request.onupgradeneeded = () => { request.result.createObjectStore('store'); };
-      request.onsuccess = () => {
-        const db = request.result;
-        const tx = db.transaction('store', 'readwrite');
-        const putReq = tx.objectStore('store').put(value, key);
-        putReq.onsuccess = () => resolve();
-        putReq.onerror = () => reject(putReq.error);
-      };
-      request.onerror = () => reject(request.error);
+      const tx = db.transaction('store', 'readwrite');
+      const putReq = tx.objectStore('store').put(value, key);
+      putReq.onsuccess = () => resolve();
+      putReq.onerror = () => reject(putReq.error);
     });
   },
+  removeItem: async (key: string): Promise<void> => {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      if (!db.objectStoreNames.contains('store')) { resolve(); return; }
+      const tx = db.transaction('store', 'readwrite');
+      const delReq = tx.objectStore('store').delete(key);
+      delReq.onsuccess = () => resolve();
+      delReq.onerror = () => reject(delReq.error);
+    });
+  },
+  getAllImages: async (): Promise<GeneratedImage[]> => {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      if (!db.objectStoreNames.contains('images')) { resolve([]); return; }
+      const tx = db.transaction('images', 'readonly');
+      const store = tx.objectStore('images');
+      const index = store.index('timestamp');
+      const req = index.openCursor(null, 'prev');
+      const results: GeneratedImage[] = [];
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (cursor) {
+          results.push(cursor.value);
+          cursor.continue();
+        } else {
+          resolve(results);
+        }
+      };
+      req.onerror = () => reject(req.error);
+    });
+  },
+  putImage: async (image: GeneratedImage): Promise<void> => {
+    const cloneable = toCloneableImage(image);
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('images', 'readwrite');
+      const req = tx.objectStore('images').put(cloneable);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  },
+  putImages: async (images: GeneratedImage[]): Promise<void> => {
+    if (!images.length) return;
+    const db = await openDB();
+    const batchSize = 10;
+    for (let i = 0; i < images.length; i += batchSize) {
+      const chunk = images.slice(i, i + batchSize).map(toCloneableImage);
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction('images', 'readwrite');
+        const store = tx.objectStore('images');
+        for (const img of chunk) {
+          store.put(img);
+        }
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error || new Error('Transaction aborted'));
+      });
+    }
+  },
+  deleteImage: async (id: string): Promise<void> => {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('images', 'readwrite');
+      const req = tx.objectStore('images').delete(id);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  },
+  deleteImages: async (ids: string[]): Promise<void> => {
+    if (!ids.length) return;
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('images', 'readwrite');
+      const store = tx.objectStore('images');
+      for (const id of ids) {
+        store.delete(id);
+      }
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  },
+  clearImages: async (): Promise<void> => {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('images', 'readwrite');
+      const req = tx.objectStore('images').clear();
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  },
+  countImages: async (): Promise<number> => {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      if (!db.objectStoreNames.contains('images')) { resolve(0); return; }
+      const tx = db.transaction('images', 'readonly');
+      const req = tx.objectStore('images').count();
+      req.onsuccess = () => resolve(req.result || 0);
+      req.onerror = () => reject(req.error);
+    });
+  }
 };
 
 // 多标签页跨页面同步通道
@@ -104,44 +232,114 @@ if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
 export const useGenerationStore = defineStore('generation', () => {
   const authStore = useAuthStore();
   
-  // 保存当前历史到 IndexedDB (严格持久化当前状态，防止已删除项重新复活)
-  let isSavingIDB = false;
-  let hasPendingSave = false;
+  // 升级迁移状态
+  const showMigrationModal = ref(false);
+  const migrationOldImages = ref<GeneratedImage[]>([]);
+  const isMigrating = ref(false);
+  const migrationProgress = ref({ current: 0, total: 0 });
+  const migrationError = ref('');
+  const migrationCompleted = ref(false);
+
+  // 全量备份保存当前历史到 IndexedDB (用于批量导入或恢复时)
   const saveHistoryToIDB = async () => {
-    if (isSavingIDB) {
-      hasPendingSave = true;
-      return;
-    }
-    isSavingIDB = true;
-    hasPendingSave = false;
     try {
-      const list = history.value.slice(0, 100);
-      await idbStorage.setItem('history', JSON.stringify(list));
+      await idbStorage.putImages(history.value);
     } catch (e) {
       console.error('Failed to save history to IDB:', e);
-    } finally {
-      isSavingIDB = false;
-      if (hasPendingSave) {
-        saveHistoryToIDB();
-      }
     }
   };
 
   // 异步从 IDB 加载历史
   const loadHistoryFromIDB = async () => {
     try {
-      const data = await idbStorage.getItem('history');
-      if (data) {
-        const diskList: GeneratedImage[] = JSON.parse(data);
-        if (Array.isArray(diskList)) {
-          history.value = diskList.slice(0, 100);
-          if (history.value.length > 0 && !currentImage.value) {
-            currentImage.value = history.value[0];
+      const isMigrated = await idbStorage.getItem('history_migrated_v2');
+      if (!isMigrated) {
+        // 检查是否有 v1 时代的单键 history 数据
+        const oldData = await idbStorage.getItem('history');
+        if (oldData) {
+          try {
+            const diskList: GeneratedImage[] = JSON.parse(oldData);
+            if (Array.isArray(diskList) && diskList.length > 0) {
+              // 探测到旧版数据，记录下来并弹出升级提示弹窗，不进行静默升级
+              migrationOldImages.value = diskList;
+              migrationProgress.value = { current: 0, total: diskList.length };
+              showMigrationModal.value = true;
+
+              // 同时临时载入内存展示，保证弹窗出现时用户也能立刻查看
+              history.value = diskList;
+              if (history.value.length > 0 && !currentImage.value) {
+                currentImage.value = history.value[0];
+              }
+              return;
+            }
+          } catch (e) {
+            console.error('Failed to parse old history:', e);
           }
+        }
+        // 若完全无旧数据，直接标为已完成 v2 初始状态
+        await idbStorage.setItem('history_migrated_v2', 'true');
+      }
+
+      // 从 v2 images 独立表按时间倒序全量载入（默认无限保存）
+      const list = await idbStorage.getAllImages();
+      if (Array.isArray(list)) {
+        history.value = list;
+        if (history.value.length > 0 && !currentImage.value) {
+          currentImage.value = history.value[0];
         }
       }
     } catch (e) {
       console.error('IDB load error', e);
+    }
+  };
+
+  // 用户点击确认升级：安全将旧版数据迁移到 images 独立 store，带进度和防误刷保护
+  const executeMigration = async () => {
+    if (isMigrating.value || migrationOldImages.value.length === 0) return;
+    isMigrating.value = true;
+    migrationError.value = '';
+    migrationProgress.value.current = 0;
+
+    const total = migrationOldImages.value.length;
+    migrationProgress.value.total = total;
+
+    const preventUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '正在安全升级图库存储架构，刷新或关闭可能导致数据丢失，确定要离开吗？';
+      return e.returnValue;
+    };
+    window.addEventListener('beforeunload', preventUnload);
+
+    try {
+      const batchSize = 10;
+      for (let i = 0; i < total; i += batchSize) {
+        const chunk = migrationOldImages.value.slice(i, i + batchSize);
+        await idbStorage.putImages(chunk);
+        migrationProgress.value.current = Math.min(total, i + chunk.length);
+        await new Promise(r => setTimeout(r, 16));
+      }
+
+      // 验证写入数量
+      const count = await idbStorage.countImages();
+      console.log(`[Storage Migration] Verified ${count} images in v2 images store`);
+
+      // 写入迁移完成标记
+      await idbStorage.setItem('history_migrated_v2', 'true');
+      // 清空旧版巨大的单个 history key 释放存储空间
+      await idbStorage.removeItem('history');
+
+      // 从独立表重新加载以保持最新
+      const freshList = await idbStorage.getAllImages();
+      history.value = freshList;
+
+      migrationCompleted.value = true;
+      migrationOldImages.value = [];
+    } catch (err: any) {
+      console.error('[Storage Migration Error]', err);
+      migrationError.value = err?.message || '升级写入发生异常，原有数据未损坏';
+    } finally {
+      isMigrating.value = false;
+      window.removeEventListener('beforeunload', preventUnload);
     }
   };
 
@@ -157,7 +355,7 @@ export const useGenerationStore = defineStore('generation', () => {
         const incoming: GeneratedImage = msg.image;
         if (!history.value.some(h => h.id === incoming.id)) {
           history.value.unshift(incoming);
-          if (history.value.length > 100) history.value.pop();
+          // 无限保存，不执行 pop()
         }
       } else if (msg.type === 'DELETE_IMAGE' && msg.id) {
         history.value = history.value.filter(h => h.id !== msg.id);
@@ -854,10 +1052,10 @@ export const useGenerationStore = defineStore('generation', () => {
     // 检查是否已在列表中
     if (!history.value.some(h => h.id === generated.id)) {
       history.value.unshift(generated);
-      if (history.value.length > 100) history.value.pop();
+      // 无限保存，不设 100 限制
     }
     currentImage.value = generated;
-    saveHistoryToIDB();
+    idbStorage.putImage(generated);
     useWebDAVStore().autoSyncSingle(useGenerationStore(), generated);
     if (tabSyncChannel) {
       try {
@@ -874,7 +1072,7 @@ export const useGenerationStore = defineStore('generation', () => {
     if (currentImage.value?.id === id) {
       currentImage.value = history.value.length > 0 ? history.value[0] : null;
     }
-    saveHistoryToIDB();
+    idbStorage.deleteImage(id);
     if (tabSyncChannel) {
       try {
         tabSyncChannel.postMessage({ type: 'DELETE_IMAGE', id });
@@ -893,7 +1091,7 @@ export const useGenerationStore = defineStore('generation', () => {
     if (currentImage.value && idSet.has(currentImage.value.id)) {
       currentImage.value = history.value.length > 0 ? history.value[0] : null;
     }
-    saveHistoryToIDB();
+    idbStorage.deleteImages(ids);
     if (tabSyncChannel) {
       try {
         for (const id of ids) {
@@ -960,7 +1158,7 @@ export const useGenerationStore = defineStore('generation', () => {
     const deletedItems = [...history.value];
     history.value = [];
     currentImage.value = null;
-    saveHistoryToIDB();
+    idbStorage.clearImages();
     if (tabSyncChannel) {
       try {
         tabSyncChannel.postMessage({ type: 'CLEAR_HISTORY' });
@@ -981,7 +1179,9 @@ export const useGenerationStore = defineStore('generation', () => {
     if (currentImage.value && !idSet.has(currentImage.value.id)) {
       currentImage.value = history.value.length > 0 ? history.value[0] : null;
     }
-    saveHistoryToIDB();
+    if (deletedItems.length > 0) {
+      idbStorage.deleteImages(deletedItems.map(i => i.id));
+    }
     if (tabSyncChannel) {
       try {
         tabSyncChannel.postMessage({ type: 'KEEP_IMAGES', ids: idsToKeep });
@@ -1027,7 +1227,15 @@ export const useGenerationStore = defineStore('generation', () => {
     resetAdvancedParams,
     addCharacter,
     removeCharacter,
-    clearCharacters
+    clearCharacters,
+    saveHistoryToIDB,
+    // 升级迁移相关
+    showMigrationModal,
+    isMigrating,
+    migrationProgress,
+    migrationError,
+    migrationCompleted,
+    executeMigration
   };
 }, {
   persist: {

@@ -355,6 +355,9 @@ const base64ToString = (b64: string): string => {
         }
         
         genStore.history.sort((a: any, b: any) => b.timestamp - a.timestamp);
+        if (total > 0) {
+          await genStore.saveHistoryToIDB();
+        }
 
         // 将增量合并后的最新全量数据反哺更新至云端 metadata.json
         syncText.value = '正在更新双端索引...';

@@ -2,5 +2,5 @@ packages:
   - "server"
   - "client"
 allowBuilds:
-  esbuild: set this to true or false
-  vue-demi: set this to true or false
+  esbuild: true
+  vue-demi: true
