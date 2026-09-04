@@ -5,9 +5,81 @@
     <link rel="icon" type="image/png" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Portal</title>
+    <script>
+      (function() {
+        var pref = localStorage.getItem('vueuse-color-scheme') || localStorage.getItem('theme');
+        var isDark = pref === 'dark' || (!pref && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        if (isDark) document.documentElement.classList.add('dark');
+      })();
+    </script>
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background-color: #f9fafb;
+      }
+      html.dark, html.dark body {
+        background-color: #030712;
+      }
+      #app-preloader {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        color: #6b7280;
+        user-select: none;
+      }
+      html.dark #app-preloader {
+        color: #9ca3af;
+      }
+      .preloader-icon-box {
+        width: 46px;
+        height: 46px;
+        border-radius: 14px;
+        background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 10px 25px -4px rgba(99, 102, 241, 0.4);
+        animation: preloader-pulse 1.8s ease-in-out infinite;
+      }
+      .preloader-spinner {
+        width: 22px;
+        height: 22px;
+        border: 2.5px solid rgba(255, 255, 255, 0.25);
+        border-top-color: #ffffff;
+        border-radius: 50%;
+        animation: preloader-spin 0.75s linear infinite;
+      }
+      .preloader-text {
+        font-size: 13px;
+        font-weight: 500;
+        letter-spacing: 0.03em;
+        opacity: 0.85;
+      }
+      @keyframes preloader-spin {
+        to { transform: rotate(360deg); }
+      }
+      @keyframes preloader-pulse {
+        0%, 100% { transform: scale(1); opacity: 0.92; }
+        50% { transform: scale(1.05); opacity: 1; }
+      }
+    </style>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <div id="app-preloader">
+        <div class="preloader-icon-box">
+          <div class="preloader-spinner"></div>
+        </div>
+        <div class="preloader-text">正在启动工作台...</div>
+      </div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

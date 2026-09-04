@@ -239,6 +239,7 @@ export const useGenerationStore = defineStore('generation', () => {
   const migrationProgress = ref({ current: 0, total: 0 });
   const migrationError = ref('');
   const migrationCompleted = ref(false);
+  const isLoadingHistory = ref(true);
 
   // 全量备份保存当前历史到 IndexedDB (用于批量导入或恢复时)
   const saveHistoryToIDB = async () => {
@@ -251,6 +252,7 @@ export const useGenerationStore = defineStore('generation', () => {
 
   // 异步从 IDB 加载历史
   const loadHistoryFromIDB = async () => {
+    isLoadingHistory.value = true;
     try {
       const isMigrated = await idbStorage.getItem('history_migrated_v2');
       if (!isMigrated) {
@@ -290,6 +292,8 @@ export const useGenerationStore = defineStore('generation', () => {
       }
     } catch (e) {
       console.error('IDB load error', e);
+    } finally {
+      isLoadingHistory.value = false;
     }
   };
 
@@ -1229,6 +1233,7 @@ export const useGenerationStore = defineStore('generation', () => {
     removeCharacter,
     clearCharacters,
     saveHistoryToIDB,
+    isLoadingHistory,
     // 升级迁移相关
     showMigrationModal,
     isMigrating,
