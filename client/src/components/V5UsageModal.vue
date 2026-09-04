@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onMounted, onUnmounted } from 'vue';
 import { useAuthStore } from '../stores/auth';
 import { 
   X, Zap, Clock, Sparkles, RefreshCw, 
@@ -20,6 +20,15 @@ const close = () => {
   emit('update:modelValue', false);
 };
 
+const handleKeyDown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape') {
+    close();
+  }
+};
+
+onMounted(() => window.addEventListener('keydown', handleKeyDown));
+onUnmounted(() => window.removeEventListener('keydown', handleKeyDown));
+
 // 格式化到期时间
 const formattedExpiresAt = computed(() => {
   if (!authStore.expiresAt) return '长期有效';
@@ -39,40 +48,40 @@ const progressColorClass = computed(() => {
 <template>
   <div 
     v-if="modelValue" 
-    class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
+    class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
     @click.self="close"
   >
     <div 
-      class="w-full max-w-xl bg-white dark:bg-gray-900 rounded-3xl border border-gray-200 dark:border-gray-800 shadow-2xl flex flex-col overflow-hidden transform transition-all select-none"
+      class="w-full max-w-xl max-h-[85dvh] sm:max-h-[85vh] bg-white dark:bg-gray-900 rounded-2xl sm:rounded-3xl border border-gray-200 dark:border-gray-800 shadow-2xl flex flex-col overflow-hidden transform transition-all select-none"
     >
-      <!-- 弹窗顶栏 -->
-      <header class="px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between bg-gradient-to-r from-purple-50/50 via-white to-indigo-50/50 dark:from-purple-950/20 dark:via-gray-900 dark:to-indigo-950/20">
-        <div class="flex items-center gap-2.5">
-          <div class="w-9 h-9 rounded-xl bg-purple-100 dark:bg-purple-900/60 text-purple-600 dark:text-purple-300 flex items-center justify-center shadow-sm">
-            <Zap class="w-5 h-5 fill-current" />
+      <!-- 弹窗顶栏 (固定不被压缩) -->
+      <header class="px-4 py-3 sm:px-6 sm:py-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between bg-gradient-to-r from-purple-50/50 via-white to-indigo-50/50 dark:from-purple-950/20 dark:via-gray-900 dark:to-indigo-950/20 shrink-0">
+        <div class="flex items-center gap-2 sm:gap-2.5">
+          <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-purple-100 dark:bg-purple-900/60 text-purple-600 dark:text-purple-300 flex items-center justify-center shadow-sm shrink-0">
+            <Zap class="w-4 h-4 sm:w-5 sm:h-5 fill-current" />
           </div>
           <div>
-            <h3 class="font-bold text-gray-900 dark:text-gray-100 text-base leading-tight flex items-center gap-1.5">
+            <h3 class="font-bold text-gray-900 dark:text-gray-100 text-sm sm:text-base leading-tight flex items-center gap-1.5">
               V5 模型免费额度与恢复详情
             </h3>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">NovelAI 官方 V5 动态免费额度系统 (Stamina)</p>
+            <p class="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mt-0.5">NovelAI 官方 V5 动态免费额度系统 (Stamina)</p>
           </div>
         </div>
 
         <button 
           @click="close"
-          class="p-2 rounded-xl text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
-          title="关闭"
+          class="p-1.5 sm:p-2 rounded-xl text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition shrink-0"
+          title="关闭 (Esc)"
         >
           <X class="w-5 h-5" />
         </button>
       </header>
 
-      <!-- 弹窗主内容 -->
-      <div class="p-5 sm:p-6 overflow-y-auto max-h-[80vh] flex flex-col gap-4 text-gray-700 dark:text-gray-300 custom-scrollbar text-xs sm:text-sm">
+      <!-- 弹窗主内容 (flex-1 min-h-0 保证超长内容自适应内部滚动，绝不顶爆头尾) -->
+      <div class="p-3.5 sm:p-6 overflow-y-auto flex-1 min-h-0 flex flex-col gap-3 sm:gap-4 text-gray-700 dark:text-gray-300 custom-scrollbar text-xs sm:text-sm">
         
         <!-- 当前额度与生图估算主卡片 -->
-        <div class="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-purple-500/10 via-indigo-500/5 to-purple-500/5 border border-purple-200/80 dark:border-purple-800/60 flex flex-col gap-3">
+        <div class="p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-gradient-to-br from-purple-500/10 via-indigo-500/5 to-purple-500/5 border border-purple-200/80 dark:border-purple-800/60 flex flex-col gap-2.5 sm:gap-3">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
               <span class="text-xs font-semibold text-purple-700 dark:text-purple-300 uppercase tracking-wider">当前额度容量</span>
@@ -223,8 +232,8 @@ const progressColorClass = computed(() => {
         </div>
 
         <!-- 账户关联信息小条 -->
-        <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 px-1 py-0.5">
-          <div class="flex items-center gap-3">
+        <div class="flex items-center justify-between text-[11px] sm:text-xs text-gray-500 dark:text-gray-400 px-1 py-0.5 flex-wrap gap-1.5">
+          <div class="flex items-center gap-2.5 sm:gap-3">
             <span>会员: <strong class="text-gray-700 dark:text-gray-200">Opus (Tier {{ authStore.subscriptionTier }})</strong></span>
             <span>点数: <strong class="text-blue-600 dark:text-blue-400 font-mono">{{ authStore.anlas.toLocaleString() }} Anlas</strong></span>
           </div>
@@ -233,12 +242,12 @@ const progressColorClass = computed(() => {
 
       </div>
 
-      <!-- 弹窗底栏操作 -->
-      <footer class="px-6 py-3.5 bg-gray-50 dark:bg-gray-800/60 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between gap-3">
+      <!-- 弹窗底栏操作 (固定不被压缩) -->
+      <footer class="px-4 py-2.5 sm:px-6 sm:py-3.5 bg-gray-50 dark:bg-gray-800/60 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between gap-3 shrink-0">
         <button
           @click="authStore.fetchUserData()"
           :disabled="authStore.loading"
-          class="px-3.5 py-2 rounded-xl text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition flex items-center gap-1.5 disabled:opacity-50"
+          class="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition flex items-center gap-1.5 disabled:opacity-50"
         >
           <RefreshCw class="w-3.5 h-3.5" :class="{ 'animate-spin': authStore.loading }" />
           <span>刷新最新数据</span>
@@ -246,7 +255,7 @@ const progressColorClass = computed(() => {
 
         <button
           @click="close"
-          class="px-5 py-2 rounded-xl text-xs font-medium bg-purple-600 hover:bg-purple-700 text-white shadow-sm transition active:scale-95"
+          class="px-4 py-1.5 sm:px-5 sm:py-2 rounded-xl text-xs font-medium bg-purple-600 hover:bg-purple-700 text-white shadow-sm transition active:scale-95"
         >
           我知道了
         </button>
