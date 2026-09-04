@@ -1089,22 +1089,31 @@ watch(
 
 <template>
   <div class="h-screen flex flex-col overflow-hidden">
-    <!-- 初始探测服务配置与认证状态时优雅过渡，杜绝黑白屏闪烁 -->
-    <div 
-      v-if="!authStore.siteAuthChecked" 
-      class="flex-1 h-screen flex flex-col items-center justify-center gap-3.5 bg-gray-50 dark:bg-gray-950 transition-colors select-none animate-fade-in"
+    <Transition
+      mode="out-in"
+      enter-active-class="transition-opacity duration-300 ease-out"
+      enter-from-class="opacity-0"
+      enter-to-class="opacity-100"
+      leave-active-class="transition-opacity duration-150 ease-in"
+      leave-from-class="opacity-100"
+      leave-to-class="opacity-0"
     >
-      <div class="w-11 h-11 rounded-2xl bg-gradient-to-tr from-blue-600 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/25 animate-pulse">
-        <div class="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+      <!-- 初始探测服务配置与认证状态时优雅过渡，杜绝黑白屏闪烁 -->
+      <div 
+        v-if="!authStore.siteAuthChecked" 
+        key="loading"
+        class="flex-1 h-screen flex flex-col items-center justify-center gap-3 bg-gray-50 dark:bg-gray-950 transition-colors select-none"
+      >
+        <Loader2 class="w-5 h-5 animate-spin text-gray-700 dark:text-gray-300" />
+        <span class="text-xs text-gray-500 dark:text-gray-400 tracking-wide">正在启动工作台...</span>
       </div>
-      <span class="text-xs font-medium text-gray-500 dark:text-gray-400 tracking-wider">正在启动工作台...</span>
-    </div>
 
-    <!-- 站点访问密钥验证界面 (若开启了站点安全验证且未解锁，全屏仅展示纯净验证卡片，隐藏顶部栏和一切项目标识) -->
-    <main 
-      v-else-if="authStore.siteAuthRequired && !authStore.siteUnlocked"
-      class="flex-1 h-screen flex items-center justify-center p-4 bg-gray-100 dark:bg-gray-950 transition-colors select-none"
-    >
+      <!-- 站点访问密钥验证界面 (若开启了站点安全验证且未解锁，全屏仅展示纯净验证卡片，隐藏顶部栏和一切项目标识) -->
+      <main 
+        v-else-if="authStore.siteAuthRequired && !authStore.siteUnlocked"
+        key="auth"
+        class="flex-1 h-screen flex items-center justify-center p-4 bg-gray-100 dark:bg-gray-950 transition-colors select-none"
+      >
       <div class="max-w-sm w-full bg-white dark:bg-gray-900 p-8 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-2xl transition-colors flex flex-col items-center">
         <div class="p-4 bg-gray-100 dark:bg-gray-800 rounded-full mb-5 text-gray-700 dark:text-gray-300">
           <Lock class="w-8 h-8" />
@@ -1141,7 +1150,7 @@ watch(
     </main>
 
     <!-- 正常工作台流程 (通过密钥验证后才渲染顶部栏与后续页面) -->
-    <template v-else>
+    <div v-else key="workbench" class="flex-1 flex flex-col min-h-0 h-full overflow-hidden">
       <!-- 头部区域 (优化移动端与PC端适配) -->
       <header class="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-4 py-2 flex flex-col md:flex-row justify-between items-start md:items-center gap-2 shadow-sm z-10 shrink-0 transition-colors relative">
         
@@ -2943,7 +2952,8 @@ watch(
         <span class="text-base font-bold text-gray-900 dark:text-gray-100">松开以导入图片...</span>
       </div>
     </div>
-  </template>
+    </div>
+  </Transition>
 </div>
 </template>
 
