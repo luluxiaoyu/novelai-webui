@@ -13,8 +13,9 @@ import PromptTextarea from './components/PromptTextarea.vue';
 import PromptEditorModal from './components/PromptEditorModal.vue';
 import ImageGalleryModal from './components/ImageGalleryModal.vue';
 import StorageMigrationModal from './components/StorageMigrationModal.vue';
+import V5UsageModal from './components/V5UsageModal.vue';
 import { parsePngMetadata, type ParsedImageMetadata } from './utils/pngMetadata';
-import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Palette, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud, Cloud, Wifi, Sparkles, ChevronDown, ChevronUp, RotateCcw, FileText, Plus, Minus, Users, User, UserPlus, Clock, Maximize2, HelpCircle } from 'lucide-vue-next';
+import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Palette, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud, Cloud, Wifi, Sparkles, ChevronDown, ChevronUp, RotateCcw, FileText, Plus, Minus, Users, User, UserPlus, Clock, Maximize2, HelpCircle, Zap } from 'lucide-vue-next';
 
 const authStore = useAuthStore();
 const genStore = useGenerationStore();
@@ -23,6 +24,7 @@ const showCharacterLibrary = ref(false);
 const showStyleLibrary = ref(false);
 const showPromptEditor = ref(false);
 const showImageGallery = ref(false);
+const showV5UsageModal = ref(false);
 const connectionStatus = ref<{ type: 'success' | 'error', text: string } | null>(null);
 
 const handleGalleryInpaint = (item: any) => {
@@ -75,16 +77,6 @@ const promptGroupFilter = ref('all');
 const promptSearchQuery = ref('');
 const paramsCopied = ref(false);
 const imageCopied = ref(false);
-const formatMsToTime = (ms: number) => {
-  if (!ms || ms <= 0) return '0 秒';
-  const totalSeconds = Math.floor(ms / 1000);
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-  const s = totalSeconds % 60;
-  if (h > 0) return `${h} 小时 ${m} 分钟`;
-  if (m > 0) return `${m} 分钟 ${s} 秒`;
-  return `${s} 秒`;
-};
 
 const showDataModal = ref(false);
 const dataModalTab = ref<'local'|'webdav'>('local');
@@ -1213,37 +1205,28 @@ watch(
               Anlas: {{ authStore.anlas.toLocaleString() }}
             </span>
 
-            <!-- V5 额度进度条徽章 (适配移动端，默认100%满，超出以100%进度显示) -->
-            <div 
-              class="flex items-center gap-2 bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/60 px-2.5 py-1 rounded-md text-xs relative group shrink-0" 
-              title="V5 模型免费动态额度 (Stamina / Usage)"
+            <!-- V5 额度单行徽章 (与其它徽章等高，点击打开完整额度详情弹窗) -->
+            <button 
+              @click="showV5UsageModal = true"
+              type="button"
+              class="text-xs bg-purple-50 hover:bg-purple-100/80 dark:bg-purple-950/40 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 px-2.5 py-1.5 rounded-md border border-purple-200 hover:border-purple-300 dark:border-purple-800/60 dark:hover:border-purple-700 font-medium inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 transition cursor-pointer shadow-sm select-none"
+              title="点击查看 V5 免费额度恢复详情与出图估算"
             >
-              <div class="flex flex-col gap-0.5">
-                <div class="flex justify-between items-center text-[10px] text-purple-700 dark:text-purple-300 font-medium gap-1.5">
-                  <span>V5 额度</span>
-                  <span class="font-bold font-mono">{{ authStore.v5UsagePercent }}%</span>
-                </div>
-                <div class="w-16 sm:w-20 h-1.5 bg-purple-200 dark:bg-purple-900/50 rounded-full overflow-hidden">
-                  <div 
-                    class="h-full bg-gradient-to-r from-purple-500 to-indigo-500 rounded-full transition-all duration-300"
-                    :style="{ width: `${Math.min(100, Math.max(0, authStore.v5UsagePercent))}%` }"
-                  ></div>
-                </div>
-              </div>
-
-              <!-- Hover tooltip info for recovery -->
-              <div v-if="authStore.v5UsagePercent < 100 && authStore.timeUntilNextPercent" class="absolute top-full mt-2 left-1/2 -translate-x-1/2 w-max bg-gray-800 dark:bg-gray-900 text-white text-[10px] sm:text-xs px-2.5 py-2 rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 shadow-lg border border-gray-700">
-                <div class="font-medium mb-1 text-gray-200 border-b border-gray-700 pb-1">额度恢复倒计时:</div>
-                <div class="flex justify-between gap-4 mt-1.5">
-                  <span class="text-gray-400">+1% 需:</span>
-                  <span class="font-mono text-purple-300">{{ formatMsToTime(authStore.timeUntilNextPercent) }}</span>
-                </div>
-                <div class="flex justify-between gap-4 mt-1">
-                  <span class="text-gray-400">至 100%:</span>
-                  <span class="font-mono text-purple-300">{{ formatMsToTime(authStore.timeUntilNextPercent + (99 - authStore.v5UsagePercent) * 3600000) }}</span>
-                </div>
-              </div>
-            </div>
+              <Zap class="w-3.5 h-3.5 fill-current text-purple-600 dark:text-purple-400 shrink-0" />
+              <span>V5 额度:</span>
+              <span class="font-bold font-mono">{{ authStore.v5UsagePercent }}%</span>
+              <!-- 内联迷你进度条 -->
+              <span class="w-8 sm:w-10 h-1.5 bg-purple-200 dark:bg-purple-900/60 rounded-full overflow-hidden inline-flex">
+                <span 
+                  class="h-full bg-gradient-to-r from-purple-500 to-indigo-500 rounded-full transition-all duration-300"
+                  :style="{ width: `${Math.min(100, Math.max(0, authStore.v5UsagePercent))}%` }"
+                ></span>
+              </span>
+              <!-- 回满时间显示 -->
+              <span class="text-[11px] font-mono text-purple-600/90 dark:text-purple-400/90">
+                ({{ authStore.v5UsagePercent < 100 ? `${authStore.formatCompactDuration(authStore.secondsToFullUsage)} 满` : '已满' }})
+              </span>
+            </button>
 
             <button @click="authStore.fetchUserData()" :disabled="authStore.loading" class="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition shrink-0" title="刷新额度">
               <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': authStore.loading }" />
@@ -2933,6 +2916,9 @@ watch(
 
     <!-- 存储架构升级迁移弹窗 (用户确认与实时进度) -->
     <StorageMigrationModal />
+
+    <!-- V5 额度恢复与详情弹窗 -->
+    <V5UsageModal v-model="showV5UsageModal" />
 
     <!-- 页面拖拽悬浮提示遮罩 -->
     <div 

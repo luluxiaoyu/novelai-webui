@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { encryptedAxios } from '../utils/api';
 
 export const useAuthStore = defineStore('auth', () => {
@@ -14,6 +14,103 @@ export const useAuthStore = defineStore('auth', () => {
 
   const expiresAt = ref<number>(0);
   const timeUntilNextPercent = ref<number>(0);
+  const usageFetchedAt = ref<number>(Date.now());
+  const now = ref<number>(Date.now());
+
+  // 启动后台定时器，驱动秒级实时倒计时
+  if (typeof window !== 'undefined') {
+    setInterval(() => {
+      now.value = Date.now();
+    }, 1000);
+  }
+
+  // 恢复常量：官方规则一天约恢复 11%，每 1% 对应 86400 / 11 秒 (~7854.55s ≈ 2.18h)
+  // 11% 额度约对应 190 张标准图 (普通尺寸 ≤1024x1024, 步数 ≤28)
+  const SECONDS_PER_PERCENT = 86400 / 11;
+  const IMAGES_PER_PERCENT = 190 / 11;
+
+  // 距离下 1% 的动态剩余秒数 (实时递减)
+  const secondsToNextPercent = computed(() => {
+    if (v5UsagePercent.value >= 100) return 0;
+    if (!timeUntilNextPercent.value) return 0;
+    const elapsed = Math.floor((now.value - usageFetchedAt.value) / 1000);
+    return Math.max(0, timeUntilNextPercent.value - elapsed);
+  });
+
+  // 距离 100% 满额的总动态剩余秒数
+  const secondsToFullUsage = computed(() => {
+    if (v5UsagePercent.value >= 100) return 0;
+    const remainingPercents = 100 - v5UsagePercent.value;
+    const firstStep = secondsToNextPercent.value || SECONDS_PER_PERCENT;
+    return Math.round(firstStep + Math.max(0, remainingPercents - 1) * SECONDS_PER_PERCENT);
+  });
+
+  // 预估当前剩余额度可出标准图数 (11% ≈ 190 张)
+  const estimatedRemainingImages = computed(() => {
+    return Math.round(v5UsagePercent.value * IMAGES_PER_PERCENT);
+  });
+
+  // 满额总容量可出标准图数 (100% ≈ 1727 张)
+  const estimatedFullCapacityImages = computed(() => {
+    return Math.round(100 * IMAGES_PER_PERCENT);
+  });
+
+  // 简写时长格式化 (Header 紧凑展示，节省空间)
+  const formatCompactDuration = (seconds: number): string => {
+    if (seconds <= 0) return '0分';
+    const totalSeconds = Math.round(seconds);
+    const d = Math.floor(totalSeconds / 86400);
+    const h = Math.floor((totalSeconds % 86400) / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+
+    if (d > 0) {
+      return `${d}天${h > 0 ? h + 'h' : ''}`;
+    }
+    if (h > 0) {
+      return `${h}h${m > 0 ? m + 'm' : ''}`;
+    }
+    if (m > 0) {
+      return `${m}m`;
+    }
+    return `${totalSeconds}s`;
+  };
+
+  // 完整时长格式化 (弹窗详情展示，紧凑规整，防止在卡片内换行)
+  const formatFullDuration = (seconds: number): string => {
+    if (seconds <= 0) return '0秒';
+    const totalSeconds = Math.round(seconds);
+    const d = Math.floor(totalSeconds / 86400);
+    const h = Math.floor((totalSeconds % 86400) / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
+
+    const parts: string[] = [];
+    if (d > 0) parts.push(`${d}天`);
+    if (h > 0) parts.push(`${h}小时`);
+    if (m > 0) parts.push(`${m}分`);
+    if (s > 0 || parts.length === 0) parts.push(`${s}秒`);
+    return parts.join(' ');
+  };
+
+  // 预计到达时刻格式化 (例如：今天 16:20 / 明天 02:45 / 9月5日 14:10)
+  const formatTargetTime = (secondsFromNow: number): string => {
+    if (secondsFromNow <= 0) return '当前已满';
+    const target = new Date(Date.now() + secondsFromNow * 1000);
+    const today = new Date();
+    const tomorrow = new Date();
+    tomorrow.setDate(today.getDate() + 1);
+
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const timeStr = `${pad(target.getHours())}:${pad(target.getMinutes())}`;
+
+    if (target.toDateString() === today.toDateString()) {
+      return `今天 ${timeStr}`;
+    }
+    if (target.toDateString() === tomorrow.toDateString()) {
+      return `明天 ${timeStr}`;
+    }
+    return `${target.getMonth() + 1}月${target.getDate()}日 ${timeStr}`;
+  };
 
   // 站点访问密码 / 密钥验证状态
   const siteAuthRequired = ref<boolean>(false);
@@ -135,6 +232,7 @@ export const useAuthStore = defineStore('auth', () => {
           if (data.usage && typeof data.usage.percent === 'number') {
             v5UsagePercent.value = data.usage.percent;
             timeUntilNextPercent.value = data.usage.timeUntilNextPercent || 0;
+            usageFetchedAt.value = Date.now();
           }
           // 计算 Anlas 点数 (Fixed + Purchased training steps)
           if (data.trainingStepsLeft) {
@@ -168,6 +266,10 @@ export const useAuthStore = defineStore('auth', () => {
             }
             if (uData.subscription.usage && typeof uData.subscription.usage.percent === 'number') {
               v5UsagePercent.value = uData.subscription.usage.percent;
+              if (typeof uData.subscription.usage.timeUntilNextPercent === 'number') {
+                timeUntilNextPercent.value = uData.subscription.usage.timeUntilNextPercent;
+                usageFetchedAt.value = Date.now();
+              }
             }
             if (uData.subscription.trainingStepsLeft) {
               const fixed = uData.subscription.trainingStepsLeft.fixedTrainingStepsLeft ?? uData.subscription.trainingStepsLeft.fixed ?? 0;
@@ -234,6 +336,7 @@ export const useAuthStore = defineStore('auth', () => {
     v5UsagePercent.value = 0;
     expiresAt.value = 0;
     timeUntilNextPercent.value = 0;
+    usageFetchedAt.value = 0;
     trainingSteps.value = 0;
     error.value = '';
   };
@@ -246,7 +349,9 @@ export const useAuthStore = defineStore('auth', () => {
   };
 
   return { 
-    token, anlas, subscriptionTier, active, v5UsagePercent, expiresAt, timeUntilNextPercent, trainingSteps, loading, error, 
+    token, anlas, subscriptionTier, active, v5UsagePercent, expiresAt, timeUntilNextPercent, usageFetchedAt, trainingSteps, loading, error, 
+    now, secondsToNextPercent, secondsToFullUsage, estimatedRemainingImages, estimatedFullCapacityImages,
+    formatCompactDuration, formatFullDuration, formatTargetTime,
     siteAuthRequired, siteUnlocked, siteAccessKey, siteAuthLoading, siteAuthError, siteAuthChecked,
     hasBuiltinKey, allowPaid,
     checkSiteAuthStatus, verifySiteAccess, login, loginWithBuiltin, logout, lockSite, fetchUserData 
