@@ -63,19 +63,33 @@ const BUILTIN_PRESETS: CharacterPreset[] = [
     prompt: 'kachina(genshin impact)',
     isBuiltin: true
   },
+  {
+    id: 'genshin-diona',
+    name: '迪奥娜 (Diona)',
+    category: '原神',
+    prompt: 'diona(genshin impact)',
+    isBuiltin: true
+  },
+  {
+    id: 'genshin-qiqi',
+    name: '七七 (Qiqi)',
+    category: '原神',
+    prompt: 'qiqi(genshin impact)',
+    isBuiltin: true
+  },
   // 崩铁
   {
     id: 'hsr-bailu',
     name: '白露 (Bailu)',
     category: '崩铁',
-    prompt: 'bailu(honkai: star rail)',
+    prompt: 'bailu(honkai:starrail)',
     isBuiltin: true
   },
   {
     id: 'hsr-huohuo',
     name: '霍霍 (huohuo)',
     category: '崩铁',
-    prompt: 'huohuo(honkai: star rail)',
+    prompt: 'huohuo(honkai:starrail)',
     isBuiltin: true
   }
 ];
