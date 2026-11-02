@@ -386,7 +386,12 @@ const batchOptions = [
   { value: 3, label: '3张' },
   { value: 5, label: '5张' },
   { value: 10, label: '10张' },
-  { value: 20, label: '20张' }
+  { value: 20, label: '20张' },
+  { value: 50, label: '50张' },
+  { value: 100, label: '100张' },
+  { value: 300, label: '300张' },
+  { value: 500, label: '500张' },
+  { value: 1000, label: '1000张' }
 ];
 
 // 计算是否消耗点数及消耗提示
