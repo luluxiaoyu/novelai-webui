@@ -1087,40 +1087,17 @@ export const useGenerationStore = defineStore('generation', () => {
         });
       }
 
-      const targetWidth = Math.round(options.width * options.scale);
-      const targetHeight = Math.round(options.height * options.scale);
-
-      // 如果用户选择了 2x，而官方接口固定按 4x 渲染，使用 Canvas 高质量二次重采样为 2x
-      if (options.scale === 2) {
-        try {
-          dataUrl = await new Promise<string>((resolve) => {
-            const img = new Image();
-            img.onload = () => {
-              if (img.naturalWidth > targetWidth || img.naturalHeight > targetHeight) {
-                const canvas = document.createElement('canvas');
-                canvas.width = targetWidth;
-                canvas.height = targetHeight;
-                const ctx = canvas.getContext('2d');
-                if (ctx) {
-                  ctx.imageSmoothingEnabled = true;
-                  ctx.imageSmoothingQuality = 'high';
-                  ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
-                  return resolve(canvas.toDataURL('image/png'));
-                }
-              }
-              resolve(dataUrl);
-            };
-            img.onerror = () => resolve(dataUrl);
-            img.src = dataUrl;
-          });
-        } catch (scaleErr) {
-          console.warn('2x downsample fallback:', scaleErr);
-        }
-      }
+      // 读取实际返回图像的真实像素尺寸，确保页面显示与下载图片绝对一致
+      const { actualWidth, actualHeight } = await new Promise<{ actualWidth: number; actualHeight: number }>((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve({ actualWidth: img.naturalWidth || img.width, actualHeight: img.naturalHeight || img.height });
+        img.onerror = () => resolve({ actualWidth: Math.round(options.width * 2), actualHeight: Math.round(options.height * 2) });
+        img.src = dataUrl;
+      });
 
       const baseParams = options.originalParams ? JSON.parse(JSON.stringify(options.originalParams)) : { ...params };
-      baseParams.width = targetWidth;
-      baseParams.height = targetHeight;
+      baseParams.width = actualWidth;
+      baseParams.height = actualHeight;
       if (options.originalPrompt) {
         baseParams.prompt = options.originalPrompt;
       }

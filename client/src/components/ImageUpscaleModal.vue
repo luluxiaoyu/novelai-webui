@@ -33,8 +33,11 @@ const rawHeight = ref<number>(0);
 const originalPrompt = ref<string>('');
 const originalParams = ref<any>(null);
 
-// 放大倍率：2 或 4 (默认推荐 4x 官方原生)
-const scale = ref<2 | 4>(4);
+// 计算目标分辨率 (官方固定规格：长宽各放大 2 倍，总像素放大 4 倍)
+const targetWidth = computed(() => Math.round(rawWidth.value * 2));
+const targetHeight = computed(() => Math.round(rawHeight.value * 2));
+const targetPixels = computed(() => targetWidth.value * targetHeight.value);
+const pixelMultiplier = 4;
 
 // 上传交互与拖拽状态
 const isDragging = ref(false);
@@ -42,16 +45,9 @@ const fileInputRef = ref<HTMLInputElement | null>(null);
 const errorMessage = ref<string>('');
 const successToast = ref<string>('');
 
-// 计算原图像素数
+// 计算原图像素数与超限判断
 const totalPixels = computed(() => rawWidth.value * rawHeight.value);
-
-// 判断是否超出官方限制
 const isOverLimit = computed(() => totalPixels.value > MAX_PIXELS);
-
-// 计算目标分辨率
-const targetWidth = computed(() => Math.round(rawWidth.value * scale.value));
-const targetHeight = computed(() => Math.round(rawHeight.value * scale.value));
-const pixelMultiplier = computed(() => scale.value * scale.value);
 
 // 加载指定 DataURL 并读取其实际宽高
 const loadDataUrlWithDimensions = (dataUrl: string, prompt = '', params: any = null) => {
@@ -75,7 +71,6 @@ const loadDataUrlWithDimensions = (dataUrl: string, prompt = '', params: any = n
 const syncWithInitialImage = () => {
   errorMessage.value = '';
   successToast.value = '';
-  scale.value = 4;
 
   const imgToUse = props.targetImage || genStore.currentImage;
   if (imgToUse && imgToUse.url) {
@@ -213,7 +208,7 @@ const handleStartUpscale = async () => {
       image: activeDataUrl.value,
       width: rawWidth.value,
       height: rawHeight.value,
-      scale: scale.value,
+      scale: 2,
       originalPrompt: originalPrompt.value,
       originalParams: originalParams.value
     });
@@ -375,41 +370,26 @@ const handleStartUpscale = async () => {
           </div>
         </div>
 
-        <!-- 放大倍率选择 (2x / 4x) -->
-        <div class="space-y-2">
-          <label class="block text-xs font-bold text-gray-700 dark:text-gray-300">选择放大倍率</label>
-          <div class="grid grid-cols-2 gap-3">
-            <!-- 4x 卡片 (官方原生) -->
-            <div 
-              @click="scale = 4"
-              class="border-2 rounded-xl p-3.5 cursor-pointer transition flex flex-col justify-between gap-2 select-none relative"
-              :class="scale === 4 ? 'border-amber-500 bg-amber-50/50 dark:bg-amber-950/20 shadow-sm' : 'border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 bg-white dark:bg-gray-900'"
-            >
-              <div class="flex items-center justify-between">
-                <span class="text-xs sm:text-sm font-bold text-gray-900 dark:text-gray-100">4x 官方超分</span>
-                <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">推荐</span>
-              </div>
-              <p class="text-[11px] text-gray-500 dark:text-gray-400">官方原生模型，极致细节与海报级超清分辨率</p>
-              <div class="text-[11px] font-mono text-gray-600 dark:text-gray-400 pt-1 border-t border-gray-100 dark:border-gray-800/60">
-                目标: <span class="font-bold text-gray-800 dark:text-gray-200">{{ rawWidth ? Math.round(rawWidth * 4) : 0 }} × {{ rawHeight ? Math.round(rawHeight * 4) : 0 }}</span>
-              </div>
-            </div>
-
-            <!-- 2x 卡片 (平滑适中) -->
-            <div 
-              @click="scale = 2"
-              class="border-2 rounded-xl p-3.5 cursor-pointer transition flex flex-col justify-between gap-2 select-none relative"
-              :class="scale === 2 ? 'border-amber-500 bg-amber-50/50 dark:bg-amber-950/20 shadow-sm' : 'border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 bg-white dark:bg-gray-900'"
-            >
-              <div class="flex items-center justify-between">
-                <span class="text-xs sm:text-sm font-bold text-gray-900 dark:text-gray-100">2x 适中放大</span>
-                <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">二次重采样</span>
-              </div>
-              <p class="text-[11px] text-gray-500 dark:text-gray-400">高质量下采样，文件更小、边缘更平滑适中</p>
-              <div class="text-[11px] font-mono text-gray-600 dark:text-gray-400 pt-1 border-t border-gray-100 dark:border-gray-800/60">
-                目标: <span class="font-bold text-gray-800 dark:text-gray-200">{{ rawWidth ? Math.round(rawWidth * 2) : 0 }} × {{ rawHeight ? Math.round(rawHeight * 2) : 0 }}</span>
-              </div>
-            </div>
+        <!-- 官方超分规格说明卡片 -->
+        <div class="border border-amber-200/80 dark:border-amber-900/50 bg-gradient-to-r from-amber-50/60 to-orange-50/40 dark:from-amber-950/20 dark:to-orange-950/10 rounded-xl p-3.5 flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs sm:text-sm font-bold text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
+              <Sparkles class="w-4 h-4 text-amber-500" />
+              <span>官方原生 AI 超分辨率放大</span>
+            </span>
+            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
+              宽高 2x · 像素 4x
+            </span>
+          </div>
+          <p class="text-[11px] text-gray-600 dark:text-gray-400">
+            调用 NovelAI 原生超分神经网络，长宽各放大 2 倍，像素总数提升至 4 倍，边缘极致锐化去噪且无伪影。
+          </p>
+          <div class="flex items-center justify-between text-[11px] font-mono text-gray-700 dark:text-gray-300 pt-2 border-t border-amber-200/40 dark:border-amber-900/30">
+            <span>放大后规格:</span>
+            <span class="font-bold text-amber-700 dark:text-amber-300">
+              {{ rawWidth ? Math.round(rawWidth * 2) : 0 }} × {{ rawHeight ? Math.round(rawHeight * 2) : 0 }}
+              <span class="font-normal opacity-75">({{ targetPixels.toLocaleString() }} px)</span>
+            </span>
           </div>
         </div>
 
@@ -453,7 +433,7 @@ const handleStartUpscale = async () => {
         >
           <Loader2 v-if="genStore.isUpscaling" class="w-4 h-4 animate-spin" />
           <Sparkles v-else class="w-4 h-4" />
-          <span>{{ genStore.isUpscaling ? 'AI 正在超分放大中...' : `开始 ${scale}x AI 超分 (消耗 1 点)` }}</span>
+          <span>{{ genStore.isUpscaling ? 'AI 正在超分放大中...' : '开始 AI 超分 (消耗 1 点)' }}</span>
         </button>
       </div>
 
