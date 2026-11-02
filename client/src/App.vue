@@ -2148,21 +2148,27 @@ watch(
             <!-- 浮动操作栏 (移动端放置在右上角 top-4 right-4，彻底解决与底部导航挤压冲突；PC端保留在右下角) -->
             <div class="absolute top-4 right-4 sm:top-auto sm:bottom-4 sm:right-4 flex items-center gap-1.5 sm:gap-2 z-30">
               <button 
+                @click="genStore.sendToInpaint(genStore.currentImage.url); showMaskEditor = true; initCanvas(); mobileTab = 'controls'" 
+                class="bg-white/95 hover:bg-blue-50 dark:bg-gray-900/95 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 border border-gray-200 dark:border-gray-700 p-2 sm:p-2.5 rounded-xl shadow-lg transition backdrop-blur-md flex items-center justify-center active:scale-95" 
+                title="发送到涂鸦重绘 (Inpaint)"
+              >
+                <Paintbrush class="w-4 h-4 sm:w-5 sm:h-5 text-blue-500" />
+              </button>
+              <button 
                 @click="openUpscaleModal(genStore.currentImage)" 
-                class="bg-white/95 hover:bg-amber-50 dark:bg-gray-900/95 dark:hover:bg-amber-950/40 text-gray-700 dark:text-gray-200 hover:text-amber-600 dark:hover:text-amber-400 border border-gray-200 dark:border-gray-700 p-2 sm:p-2.5 rounded-xl shadow-lg transition backdrop-blur-md flex items-center gap-1 text-xs font-semibold" 
+                class="bg-white/95 hover:bg-amber-50 dark:bg-gray-900/95 dark:hover:bg-amber-950/40 text-gray-700 dark:text-gray-200 hover:text-amber-600 dark:hover:text-amber-400 border border-gray-200 dark:border-gray-700 p-2 sm:p-2.5 rounded-xl shadow-lg transition backdrop-blur-md flex items-center justify-center active:scale-95" 
                 title="AI 超分辨率放大此图 (消耗 1 点数)"
               >
                 <Sparkles class="w-4 h-4 sm:w-5 sm:h-5 text-amber-500" />
-                <span class="hidden md:inline text-xs">超分</span>
               </button>
-              <button @click="downloadImage" class="bg-white/95 hover:bg-blue-50 dark:bg-gray-900/95 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 p-2 sm:p-2.5 rounded-xl shadow-lg transition backdrop-blur-md" title="下载原图">
+              <button @click="downloadImage" class="bg-white/95 hover:bg-blue-50 dark:bg-gray-900/95 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 p-2 sm:p-2.5 rounded-xl shadow-lg transition backdrop-blur-md active:scale-95" title="下载原图">
                 <Download class="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
-              <button @click="copyImageToClipboard" class="bg-white/95 hover:bg-blue-50 dark:bg-gray-900/95 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 p-2 sm:p-2.5 rounded-xl shadow-lg transition backdrop-blur-md" title="复制图像到剪贴板">
+              <button @click="copyImageToClipboard" class="bg-white/95 hover:bg-blue-50 dark:bg-gray-900/95 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 p-2 sm:p-2.5 rounded-xl shadow-lg transition backdrop-blur-md active:scale-95" title="复制图像到剪贴板">
                 <Check v-if="imageCopied" class="w-4 h-4 sm:w-5 sm:h-5 text-green-500" />
                 <Copy v-else class="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
-              <button @click="handleUseParams" class="bg-white/95 hover:bg-blue-50 dark:bg-gray-900/95 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 p-2 sm:p-2.5 rounded-xl shadow-lg transition backdrop-blur-md" title="复用此图全部参数">
+              <button @click="handleUseParams" class="bg-white/95 hover:bg-blue-50 dark:bg-gray-900/95 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 p-2 sm:p-2.5 rounded-xl shadow-lg transition backdrop-blur-md active:scale-95" title="复用此图全部参数">
                 <Check v-if="paramsCopied" class="w-4 h-4 sm:w-5 sm:h-5 text-green-500" />
                 <SlidersHorizontal v-else class="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
@@ -2296,43 +2302,40 @@ watch(
                 <img :src="item.url" class="w-full h-full object-contain transition-transform duration-300 group-hover:scale-105" />
               </div>
               
-              <!-- 卡片底部独立操作栏 (常驻清晰可见，彻底告别盲点与误触) -->
-              <div class="flex items-center justify-between px-2.5 py-1.5 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 text-xs">
+              <!-- 卡片底部独立操作栏 (纯图标精简布局，彻底杜绝文字折行挤压) -->
+              <div class="flex items-center justify-between px-2 py-1.5 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 text-xs">
                 <div class="flex items-center gap-1">
                   <button 
                     @click.stop="genStore.currentImage = item; genStore.sendToInpaint(item.url); showMaskEditor = true; initCanvas(); mobileTab = 'controls'" 
-                    class="text-gray-600 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 font-medium py-1 px-1.5 rounded hover:bg-blue-50 dark:hover:bg-blue-950/40 transition flex items-center gap-1 text-[11px]"
+                    class="text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/40 transition active:scale-95"
                     title="发送到涂鸦重绘"
                   >
-                    <Paintbrush class="w-3 h-3 text-blue-500" />
-                    <span>重绘</span>
+                    <Paintbrush class="w-3.5 h-3.5 text-blue-500" />
                   </button>
                   <button 
                     @click.stop="openUpscaleModal(item)" 
-                    class="text-gray-600 hover:text-amber-600 dark:text-gray-400 dark:hover:text-amber-400 font-medium py-1 px-1.5 rounded hover:bg-amber-50 dark:hover:bg-amber-950/40 transition flex items-center gap-1 text-[11px]"
+                    class="text-gray-500 hover:text-amber-600 dark:text-gray-400 dark:hover:text-amber-400 p-1.5 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-950/40 transition active:scale-95"
                     title="AI 超分放大此图 (消耗 1 点数)"
                   >
-                    <Sparkles class="w-3 h-3 text-amber-500" />
-                    <span>超分</span>
+                    <Sparkles class="w-3.5 h-3.5 text-amber-500" />
                   </button>
                   <button 
                     @click.stop="genStore.useParams(item); mobileTab = 'controls'" 
-                    class="text-gray-600 hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-400 font-medium py-1 px-1.5 rounded hover:bg-purple-50 dark:hover:bg-purple-950/40 transition flex items-center gap-1 text-[11px]"
-                    title="复用此图参数"
+                    class="text-gray-500 hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-400 p-1.5 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-950/40 transition active:scale-95"
+                    title="复用此图全部参数"
                   >
-                    <SlidersHorizontal class="w-3 h-3 text-purple-500" />
-                    <span>复用</span>
+                    <SlidersHorizontal class="w-3.5 h-3.5 text-purple-500" />
                   </button>
                 </div>
 
                 <button 
                   @click.stop="handleDeleteHistory(item.id)" 
-                  class="py-1 px-1.5 rounded transition flex items-center gap-0.5 text-[11px]"
-                  :class="deletingHistoryId === item.id ? 'bg-red-600 text-white font-bold animate-pulse' : 'text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40'"
+                  class="p-1.5 rounded-lg transition flex items-center gap-0.5 active:scale-95"
+                  :class="deletingHistoryId === item.id ? 'bg-red-600 text-white font-bold animate-pulse px-2' : 'text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40'"
                   :title="deletingHistoryId === item.id ? '再次点击确认删除' : '删除'"
                 >
-                  <Trash2 v-if="deletingHistoryId !== item.id" class="w-3 h-3" />
-                  <span>{{ deletingHistoryId === item.id ? '确认删除?' : '' }}</span>
+                  <Trash2 class="w-3.5 h-3.5" />
+                  <span v-if="deletingHistoryId === item.id" class="text-[11px] font-bold">确定?</span>
                 </button>
               </div>
             </div>
