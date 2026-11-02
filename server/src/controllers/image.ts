@@ -169,14 +169,27 @@ export const upscaleImage = async (req: Request, res: Response) => {
     return res.status(403).json({ error: errorMsg });
   }
 
-  const { image, width, height, scale } = req.body || {};
+  const { image, width, height, scale, model } = req.body || {};
   if (!image) {
     return res.status(400).json({ error: '缺少待超分的图像数据 (image)' });
   }
 
-  const numWidth = Number(width);
-  const numHeight = Number(height);
-  const numScale = Number(scale) || 2;
+  const rawBase64 = typeof image === 'string' && image.includes(',') ? image.split(',')[1] : image;
+  const imageBuffer = Buffer.from(rawBase64, 'base64');
+
+  let numWidth = Number(width);
+  let numHeight = Number(height);
+  const numScale = Number(scale) || 4;
+
+  // 尝试从 PNG 二进制头读取真实分辨率 (IHDR chunks)
+  if (imageBuffer.length > 24 && imageBuffer[0] === 0x89 && imageBuffer[1] === 0x50 && imageBuffer[2] === 0x4e && imageBuffer[3] === 0x47) {
+    const pngWidth = imageBuffer.readUInt32BE(16);
+    const pngHeight = imageBuffer.readUInt32BE(20);
+    if (pngWidth > 0 && pngHeight > 0) {
+      numWidth = pngWidth;
+      numHeight = pngHeight;
+    }
+  }
 
   if (!numWidth || !numHeight) {
     return res.status(400).json({ error: '缺少图像分辨率参数 (width, height)' });
@@ -198,20 +211,46 @@ export const upscaleImage = async (req: Request, res: Response) => {
 
   try {
     await generationQueue.enqueue(tokenKey, req, res, async () => {
-      console.log(`[upscaleImage] Sending upscale request to NovelAI: ${numWidth}x${numHeight}, scale=${numScale}`);
+      const targetModel = model || 'nai-diffusion-5-full';
+      console.log(`[upscaleImage] Sending upscale request to NovelAI: ${numWidth}x${numHeight}, model=${targetModel}, requestedScale=${numScale}`);
       
-      const rawBase64 = typeof image === 'string' && image.includes(',') ? image.split(',')[1] : image;
-      const payload = {
-        image: rawBase64,
-        width: numWidth,
-        height: numHeight,
-        scale: numScale
-      };
+      // 构造官方标准的 multipart/form-data 格式 (包含 image part 和 request json part)
+      const boundary = `----WebKitFormBoundary${Math.random().toString(36).substring(2)}${Date.now().toString(36)}`;
+      
+      const part1Header = Buffer.from(
+        `--${boundary}\r\n` +
+        `Content-Disposition: form-data; name="image"; filename="blob"\r\n` +
+        `Content-Type: image/png\r\n\r\n`
+      );
+      const part1Footer = Buffer.from('\r\n');
 
-      const response = await naiImageClient.post('/ai/upscale', payload, {
+      const requestJson = JSON.stringify({
+        image: 'image',
+        model: targetModel,
+        declared_blur_sigma: 0
+      });
+
+      const part2Header = Buffer.from(
+        `--${boundary}\r\n` +
+        `Content-Disposition: form-data; name="request"; filename="blob"\r\n` +
+        `Content-Type: application/json\r\n\r\n`
+      );
+      const part2Content = Buffer.from(requestJson, 'utf-8');
+      const part2Footer = Buffer.from(`\r\n--${boundary}--\r\n`);
+
+      const multipartBody = Buffer.concat([
+        part1Header,
+        imageBuffer,
+        part1Footer,
+        part2Header,
+        part2Content,
+        part2Footer
+      ]);
+
+      const response = await naiImageClient.post('/ai/upscale', multipartBody, {
         headers: {
           'Authorization': token,
-          'Content-Type': 'application/json',
+          'Content-Type': `multipart/form-data; boundary=${boundary}`,
           'Accept': '*/*'
         },
         responseType: 'arraybuffer',
@@ -220,7 +259,8 @@ export const upscaleImage = async (req: Request, res: Response) => {
 
       logGeneration(req, 'upscale', 'success');
 
-      res.setHeader('Content-Type', 'application/zip');
+      const contentType = String(response.headers['content-type'] || 'application/zip');
+      res.setHeader('Content-Type', contentType);
       res.status(200).send(response.data);
     });
   } catch (error: any) {

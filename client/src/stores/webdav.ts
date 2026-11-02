@@ -438,7 +438,7 @@ const base64ToString = (b64: string): string => {
             
             try {
               await ensureDirectory(dirPath);
-              const b64Data = img.url.replace(/^data:image\/png;base64,/, '');
+              const b64Data = img.url.includes(',') ? img.url.split(',')[1] : img.url;
               await executeAction('putFileContents', filePath, b64Data);
             } catch (e) {
               console.warn(`Failed to push image ${img.id}:`, e);
@@ -492,7 +492,7 @@ const base64ToString = (b64: string): string => {
       const filePath = `${dirPath}/${img.id}.png`;
       
       await ensureDirectory(dirPath);
-      const b64Data = img.url.replace(/^data:image\/png;base64,/, '');
+      const b64Data = img.url.includes(',') ? img.url.split(',')[1] : img.url;
       await executeAction('putFileContents', filePath, b64Data);
       
       // 如果用户在上传过程中删除了该图，立即删除云端刚上传的遗留文件并中止

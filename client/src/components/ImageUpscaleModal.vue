@@ -33,8 +33,8 @@ const rawHeight = ref<number>(0);
 const originalPrompt = ref<string>('');
 const originalParams = ref<any>(null);
 
-// 放大倍率：2 或 4 (默认推荐 2)
-const scale = ref<2 | 4>(2);
+// 放大倍率：2 或 4 (默认推荐 4x 官方原生)
+const scale = ref<2 | 4>(4);
 
 // 上传交互与拖拽状态
 const isDragging = ref(false);
@@ -75,7 +75,7 @@ const loadDataUrlWithDimensions = (dataUrl: string, prompt = '', params: any = n
 const syncWithInitialImage = () => {
   errorMessage.value = '';
   successToast.value = '';
-  scale.value = 2;
+  scale.value = 4;
 
   const imgToUse = props.targetImage || genStore.currentImage;
   if (imgToUse && imgToUse.url) {
@@ -108,8 +108,31 @@ const handleFile = (file: File) => {
   reader.onload = (e) => {
     const dataUrl = e.target?.result as string;
     if (dataUrl) {
-      loadDataUrlWithDimensions(dataUrl, `本地导入图片: ${file.name}`, null);
-      activeTab.value = 'upload';
+      // 保证统一转换为标准 PNG 格式，避免非 PNG 图片直接上传时 NovelAI 后端报错
+      const img = new Image();
+      img.onload = () => {
+        const w = img.naturalWidth || img.width;
+        const h = img.naturalHeight || img.height;
+        if (dataUrl.startsWith('data:image/png;base64,')) {
+          loadDataUrlWithDimensions(dataUrl, `本地导入图片: ${file.name}`, null);
+        } else {
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0);
+            loadDataUrlWithDimensions(canvas.toDataURL('image/png'), `本地导入图片: ${file.name}`, null);
+          } else {
+            loadDataUrlWithDimensions(dataUrl, `本地导入图片: ${file.name}`, null);
+          }
+        }
+        activeTab.value = 'upload';
+      };
+      img.onerror = () => {
+        errorMessage.value = '解析图片尺寸失败';
+      };
+      img.src = dataUrl;
     }
   };
   reader.onerror = () => {
@@ -356,35 +379,35 @@ const handleStartUpscale = async () => {
         <div class="space-y-2">
           <label class="block text-xs font-bold text-gray-700 dark:text-gray-300">选择放大倍率</label>
           <div class="grid grid-cols-2 gap-3">
-            <!-- 2x 卡片 -->
-            <div 
-              @click="scale = 2"
-              class="border-2 rounded-xl p-3.5 cursor-pointer transition flex flex-col justify-between gap-2 select-none relative"
-              :class="scale === 2 ? 'border-amber-500 bg-amber-50/50 dark:bg-amber-950/20 shadow-sm' : 'border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 bg-white dark:bg-gray-900'"
-            >
-              <div class="flex items-center justify-between">
-                <span class="text-xs sm:text-sm font-bold text-gray-900 dark:text-gray-100">2x 超分辨率</span>
-                <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">推荐</span>
-              </div>
-              <p class="text-[11px] text-gray-500 dark:text-gray-400">渲染迅速，边缘平滑自然，无伪影</p>
-              <div class="text-[11px] font-mono text-gray-600 dark:text-gray-400 pt-1 border-t border-gray-100 dark:border-gray-800/60">
-                目标: <span class="font-bold text-gray-800 dark:text-gray-200">{{ rawWidth ? Math.round(rawWidth * 2) : 0 }} × {{ rawHeight ? Math.round(rawHeight * 2) : 0 }}</span>
-              </div>
-            </div>
-
-            <!-- 4x 卡片 -->
+            <!-- 4x 卡片 (官方原生) -->
             <div 
               @click="scale = 4"
               class="border-2 rounded-xl p-3.5 cursor-pointer transition flex flex-col justify-between gap-2 select-none relative"
               :class="scale === 4 ? 'border-amber-500 bg-amber-50/50 dark:bg-amber-950/20 shadow-sm' : 'border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 bg-white dark:bg-gray-900'"
             >
               <div class="flex items-center justify-between">
-                <span class="text-xs sm:text-sm font-bold text-gray-900 dark:text-gray-100">4x 超分辨率</span>
-                <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">超清</span>
+                <span class="text-xs sm:text-sm font-bold text-gray-900 dark:text-gray-100">4x 官方超分</span>
+                <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">推荐</span>
               </div>
-              <p class="text-[11px] text-gray-500 dark:text-gray-400">极致清晰度，海报印刷级高分辨率</p>
+              <p class="text-[11px] text-gray-500 dark:text-gray-400">官方原生模型，极致细节与海报级超清分辨率</p>
               <div class="text-[11px] font-mono text-gray-600 dark:text-gray-400 pt-1 border-t border-gray-100 dark:border-gray-800/60">
                 目标: <span class="font-bold text-gray-800 dark:text-gray-200">{{ rawWidth ? Math.round(rawWidth * 4) : 0 }} × {{ rawHeight ? Math.round(rawHeight * 4) : 0 }}</span>
+              </div>
+            </div>
+
+            <!-- 2x 卡片 (平滑适中) -->
+            <div 
+              @click="scale = 2"
+              class="border-2 rounded-xl p-3.5 cursor-pointer transition flex flex-col justify-between gap-2 select-none relative"
+              :class="scale === 2 ? 'border-amber-500 bg-amber-50/50 dark:bg-amber-950/20 shadow-sm' : 'border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 bg-white dark:bg-gray-900'"
+            >
+              <div class="flex items-center justify-between">
+                <span class="text-xs sm:text-sm font-bold text-gray-900 dark:text-gray-100">2x 适中放大</span>
+                <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">二次重采样</span>
+              </div>
+              <p class="text-[11px] text-gray-500 dark:text-gray-400">高质量下采样，文件更小、边缘更平滑适中</p>
+              <div class="text-[11px] font-mono text-gray-600 dark:text-gray-400 pt-1 border-t border-gray-100 dark:border-gray-800/60">
+                目标: <span class="font-bold text-gray-800 dark:text-gray-200">{{ rawWidth ? Math.round(rawWidth * 2) : 0 }} × {{ rawHeight ? Math.round(rawHeight * 2) : 0 }}</span>
               </div>
             </div>
           </div>

@@ -42,11 +42,35 @@ export const webdavAction = async (req: Request, res: Response) => {
           }
           throw getErr;
         }
-      case 'putFileContents':
+      case 'putFileContents': {
         if (!data) return res.status(400).json({ error: 'Missing file data' });
-        const putBuffer = Buffer.from(data, 'base64');
-        result = await client.putFileContents(path, putBuffer, { overwrite: true });
+        const rawData = typeof data === 'string' && data.includes(',') ? data.split(',')[1] : data;
+        const putBuffer = Buffer.from(rawData, 'base64');
+        try {
+          result = await client.putFileContents(path, putBuffer, { overwrite: true });
+        } catch (putErr: any) {
+          // If directory missing (409 or 404), attempt to create parent directory then retry once
+          const lastSlash = path.lastIndexOf('/');
+          if (lastSlash > 0) {
+            const parentDir = path.substring(0, lastSlash);
+            try {
+              const dirParts = parentDir.split('/').filter(Boolean);
+              let cur = '';
+              for (const part of dirParts) {
+                cur += '/' + part;
+                const ex = await client.exists(cur);
+                if (!ex) await client.createDirectory(cur);
+              }
+              result = await client.putFileContents(path, putBuffer, { overwrite: true });
+            } catch {
+              throw putErr;
+            }
+          } else {
+            throw putErr;
+          }
+        }
         break;
+      }
       case 'deleteFile':
         try {
           result = await client.deleteFile(path);

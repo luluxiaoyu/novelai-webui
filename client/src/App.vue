@@ -1177,14 +1177,14 @@ watch(
           </div>
           
           <div class="flex items-center gap-1 sm:gap-1.5 ml-2">
-            <!-- AI 超分扩图入口 -->
+            <!-- 超分扩图入口 -->
             <button 
               @click="openUpscaleModal(null)" 
               class="text-gray-600 hover:text-amber-600 dark:text-gray-400 dark:hover:text-amber-400 p-1.5 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-950/40 transition flex items-center gap-1.5 text-xs font-medium border border-gray-200 dark:border-gray-700 shadow-sm shrink-0"
-              title="AI 超分辨率放大 (支持本地传图与现有图，消耗 1 点数)"
+              title="超分辨率放大 (支持本地传图与现有图，消耗 1 点数)"
             >
               <Sparkles class="w-4 h-4 text-amber-500" />
-              <span class="hidden sm:inline">AI超分</span>
+              <span class="hidden sm:inline">超分</span>
             </button>
 
             <!-- 大屏图库入口 -->

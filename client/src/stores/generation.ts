@@ -1044,6 +1044,8 @@ export const useGenerationStore = defineStore('generation', () => {
           : `Bearer ${authStore.token}`;
       }
 
+      const modelToUse = options.originalParams?.model || params.model || 'nai-diffusion-5-full';
+
       const res = await encryptedAxios({
         method: 'POST',
         url: '/api/upscale',
@@ -1051,25 +1053,67 @@ export const useGenerationStore = defineStore('generation', () => {
           image: rawBase64,
           width: options.width,
           height: options.height,
-          scale: options.scale
+          scale: options.scale,
+          model: modelToUse
         },
         headers,
         responseType: 'arraybuffer'
       });
 
-      const zip = new JSZip();
-      const loadedZip = await zip.loadAsync(res.data);
-      const files = Object.keys(loadedZip.files);
-      if (files.length === 0) {
-        throw new Error('未在返回的压缩包中找到超分图像文件');
+      let dataUrl: string = '';
+      const u8 = new Uint8Array(res.data);
+      // 判断返回的是 ZIP 还是直接二进制图片
+      if (u8.length >= 4 && u8[0] === 0x50 && u8[1] === 0x4b && u8[2] === 0x03 && u8[3] === 0x04) {
+        const zip = new JSZip();
+        const loadedZip = await zip.loadAsync(res.data);
+        const files = Object.keys(loadedZip.files);
+        if (files.length === 0) {
+          throw new Error('未在返回的压缩包中找到超分图像文件');
+        }
+        const file = loadedZip.files[files[0]];
+        const base64Data = await file.async('base64');
+        dataUrl = `data:image/png;base64,${base64Data}`;
+      } else {
+        const isWebp = u8.length >= 4 && u8[0] === 0x52 && u8[1] === 0x49 && u8[2] === 0x46 && u8[3] === 0x46;
+        const mime = isWebp ? 'image/webp' : 'image/png';
+        const blob = new Blob([res.data], { type: mime });
+        dataUrl = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(blob);
+        });
       }
-
-      const file = loadedZip.files[files[0]];
-      const base64Data = await file.async('base64');
-      const dataUrl = `data:image/png;base64,${base64Data}`;
 
       const targetWidth = Math.round(options.width * options.scale);
       const targetHeight = Math.round(options.height * options.scale);
+
+      // 如果用户选择了 2x，而官方接口固定按 4x 渲染，使用 Canvas 高质量二次重采样为 2x
+      if (options.scale === 2) {
+        try {
+          dataUrl = await new Promise<string>((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+              if (img.naturalWidth > targetWidth || img.naturalHeight > targetHeight) {
+                const canvas = document.createElement('canvas');
+                canvas.width = targetWidth;
+                canvas.height = targetHeight;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                  ctx.imageSmoothingEnabled = true;
+                  ctx.imageSmoothingQuality = 'high';
+                  ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+                  return resolve(canvas.toDataURL('image/png'));
+                }
+              }
+              resolve(dataUrl);
+            };
+            img.onerror = () => resolve(dataUrl);
+            img.src = dataUrl;
+          });
+        } catch (scaleErr) {
+          console.warn('2x downsample fallback:', scaleErr);
+        }
+      }
 
       const baseParams = options.originalParams ? JSON.parse(JSON.stringify(options.originalParams)) : { ...params };
       baseParams.width = targetWidth;
