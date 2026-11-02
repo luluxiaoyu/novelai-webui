@@ -140,11 +140,15 @@ const onFileInputChange = (e: Event) => {
   if (target.files && target.files[0]) {
     handleFile(target.files[0]);
   }
+  target.value = '';
 };
 
 const onDrop = (e: DragEvent) => {
+  e.preventDefault();
+  e.stopPropagation();
   isDragging.value = false;
   if (e.dataTransfer?.files && e.dataTransfer.files[0]) {
+    activeTab.value = 'upload';
     handleFile(e.dataTransfer.files[0]);
   }
 };
@@ -225,7 +229,19 @@ const handleStartUpscale = async () => {
     v-if="modelValue" 
     class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in select-none"
     @click.self="emit('update:modelValue', false)"
+    @dragover.stop.prevent="isDragging = true"
+    @dragleave.stop.prevent="isDragging = false"
+    @drop.stop.prevent="onDrop"
   >
+    <!-- 全局文件上传 input，始终挂载在 DOM，解决更换图片按钮因条件渲染导致 ref 丢失问题 -->
+    <input 
+      ref="fileInputRef" 
+      type="file" 
+      accept="image/png,image/jpeg,image/webp" 
+      class="hidden" 
+      @change="onFileInputChange" 
+    />
+
     <div 
       class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl w-full max-w-xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden transition-all text-gray-800 dark:text-gray-100"
     >
@@ -274,20 +290,13 @@ const handleStartUpscale = async () => {
         <!-- 本地上传拖拽区 (上传 Tab 激活或未选择图片时展示) -->
         <div 
           v-if="activeTab === 'upload' && !activeDataUrl"
-          @dragover.prevent="isDragging = true"
-          @dragleave.prevent="isDragging = false"
-          @drop.prevent="onDrop"
+          @dragover.stop.prevent="isDragging = true"
+          @dragleave.stop.prevent="isDragging = false"
+          @drop.stop.prevent="onDrop"
           @click="fileInputRef?.click()"
           class="border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center gap-2.5 cursor-pointer transition text-center"
           :class="isDragging ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-950/20' : 'border-gray-300 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-600 bg-gray-50/50 dark:bg-gray-950/30'"
         >
-          <input 
-            ref="fileInputRef" 
-            type="file" 
-            accept="image/png,image/jpeg,image/webp" 
-            class="hidden" 
-            @change="onFileInputChange" 
-          />
           <div class="w-10 h-10 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center">
             <UploadCloud class="w-5 h-5" />
           </div>

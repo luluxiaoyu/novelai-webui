@@ -647,6 +647,11 @@ const onWindowDrop = async (e: DragEvent) => {
   e.preventDefault();
   isDraggingOver.value = false;
 
+  // 如果超分弹窗或其他弹窗正在展示，禁止触发全局拖拽识别元数据弹窗
+  if (showUpscaleModal.value || showImageGallery.value || showDataModal.value || showCharacterLibrary.value || showStyleLibrary.value || showPromptEditor.value || showV5UsageModal.value) {
+    return;
+  }
+
   const files = e.dataTransfer?.files;
   if (!files || files.length === 0) return;
 
@@ -2145,10 +2150,10 @@ watch(
               待重绘
             </div>
 
-            <!-- 已超分标识 Tag -->
+            <!-- 已超分标识 Tag (放置在画布右上角，避免遮挡左上角缩放条；移动端位于 top-16 避免遮挡右上角操作栏) -->
             <div 
               v-if="isImageUpscaled(genStore.currentImage)"
-              class="absolute top-4 left-4 bg-amber-500/90 text-white text-xs px-2.5 py-1 rounded-full shadow-lg backdrop-blur-sm z-20 flex items-center gap-1.5 font-medium border border-amber-300/40 pointer-events-none animate-fade-in"
+              class="absolute top-16 right-4 sm:top-4 sm:right-4 bg-amber-500/90 text-white text-xs px-2.5 py-1 rounded-full shadow-lg backdrop-blur-sm z-20 flex items-center gap-1.5 font-medium border border-amber-300/40 pointer-events-none animate-fade-in"
             >
               <Maximize2 class="w-3.5 h-3.5" />
               <span>超分辨率</span>
