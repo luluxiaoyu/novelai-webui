@@ -43,7 +43,10 @@ export const generateImage = async (req: Request, res: Response) => {
 
       if (isZip) {
         res.setHeader('Content-Type', 'application/zip');
-        res.status(201).send(response.data);
+        const sendData = Buffer.isBuffer(response.data) || response.data instanceof ArrayBuffer 
+          ? Buffer.from(response.data as any) 
+          : response.data;
+        res.status(201).send(sendData);
       } else {
         res.status(201).json(response.data);
       }
@@ -52,8 +55,8 @@ export const generateImage = async (req: Request, res: Response) => {
     if (res.headersSent) return;
     console.error(`Error generating image:`, error.message);
     let parsedData = error.response?.data;
-    if (parsedData instanceof Buffer) {
-      const text = parsedData.toString('utf-8');
+    if (Buffer.isBuffer(parsedData) || parsedData instanceof ArrayBuffer || ArrayBuffer.isView(parsedData)) {
+      const text = Buffer.from(parsedData as any).toString('utf-8');
       try {
         parsedData = JSON.parse(text);
       } catch {
@@ -135,10 +138,18 @@ export const generateImageStream = async (req: Request, res: Response) => {
       } catch {
         errorData = { message: error.message };
       }
+    } else if (Buffer.isBuffer(errorData) || errorData instanceof ArrayBuffer || ArrayBuffer.isView(errorData)) {
+      const text = Buffer.from(errorData as any).toString('utf-8');
+      try {
+        errorData = JSON.parse(text);
+      } catch {
+        errorData = { message: text };
+      }
     }
 
     logGeneration(req, 'stream', 'failed', { error: errorData || error.message });
     if (error.response) {
+      console.error(`NovelAI stream upstream error [${error.response.status}]:`, JSON.stringify(errorData));
       return res.status(error.response.status).json(errorData || { error: 'Upstream generation error', status: error.response.status });
     }
     return res.status(error.status || 500).json({ error: error.message || 'Internal Server Error' });
@@ -261,14 +272,17 @@ export const upscaleImage = async (req: Request, res: Response) => {
 
       const contentType = String(response.headers['content-type'] || 'application/zip');
       res.setHeader('Content-Type', contentType);
-      res.status(200).send(response.data);
+      const sendData = Buffer.isBuffer(response.data) || response.data instanceof ArrayBuffer 
+        ? Buffer.from(response.data as any) 
+        : response.data;
+      res.status(200).send(sendData);
     });
   } catch (error: any) {
     if (res.headersSent) return;
     console.error(`Error upscaling image:`, error.message);
     let parsedData = error.response?.data;
-    if (parsedData instanceof Buffer) {
-      const text = parsedData.toString('utf-8');
+    if (Buffer.isBuffer(parsedData) || parsedData instanceof ArrayBuffer || ArrayBuffer.isView(parsedData)) {
+      const text = Buffer.from(parsedData as any).toString('utf-8');
       try {
         parsedData = JSON.parse(text);
       } catch {

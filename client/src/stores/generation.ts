@@ -526,8 +526,8 @@ export const useGenerationStore = defineStore('generation', () => {
 
 
       const seedToUse = params.seed === -1 ? Math.floor(Math.random() * 4294967295) : params.seed;
-      const isV4OrV5 = params.model.includes('-4') || params.model.includes('-5');
-      const isV5 = params.model.includes('-5');
+      const isV4OrV5 = params.model.includes('-4') || params.model.includes('-5') || params.model.includes('v4') || params.model.includes('v5');
+      const isV5 = params.model.includes('diffusion-5') || params.model.includes('v5');
       let action: 'generate' | 'img2img' | 'infill' = 'generate';
       if (params.mask && params.image) {
         action = 'infill';
@@ -722,8 +722,17 @@ export const useGenerationStore = defineStore('generation', () => {
           clearTimeout(timeoutId);
 
           if (!response.ok) {
-            const errData = await response.json().catch(() => ({}));
-            throw new Error(errData.message || '流式生成失败');
+            let errMsg = '流式生成失败';
+            try {
+              const errData = await response.json();
+              errMsg = errData.message || errData.error || (typeof errData === 'object' ? JSON.stringify(errData) : String(errData));
+            } catch {
+              try {
+                const text = await response.text();
+                if (text) errMsg = text;
+              } catch {}
+            }
+            throw new Error(errMsg);
           }
 
           const reader = response.body?.getReader();
@@ -731,6 +740,7 @@ export const useGenerationStore = defineStore('generation', () => {
           let buffer = '';
           let streamResultSaved = false;
           let lastRenderTime = 0;
+          let lastBase64: string | null = null;
           const THROTTLE_INTERVAL_MS = 125; // 开启节流时限制最大约 8fps
 
           const updateStreamPreviewBlob = (b64Data: string) => {
@@ -771,6 +781,11 @@ export const useGenerationStore = defineStore('generation', () => {
 
                 try {
                   const parsed = JSON.parse(dataStr);
+                  const rawErr = parsed.error || (parsed.message && !parsed.ptr && !parsed.b64 && !parsed.image && !parsed.document ? parsed.message : null);
+                  if (rawErr) {
+                    const errMsg = typeof rawErr === 'object' ? (rawErr.message || rawErr.error || JSON.stringify(rawErr)) : String(rawErr);
+                    throw new Error(errMsg);
+                  }
                   const eventType = parsed.event_type || parsed.event;
                   
                   // 智能提取 base64
@@ -794,6 +809,8 @@ export const useGenerationStore = defineStore('generation', () => {
                         b64 = await file.async('base64');
                       }
                     }
+
+                    lastBase64 = b64;
 
                     // 如果明确是 final，或者包含 success 等最终标识
                     const isFinal = eventType === 'final' || eventType === 'done' || parsed.success === true;
@@ -825,8 +842,27 @@ export const useGenerationStore = defineStore('generation', () => {
                       }
                       updateStreamPreviewBlob(b64);
                     }
+                  } else if ((eventType === 'final' || eventType === 'done' || parsed.success === true) && lastBase64) {
+                    const finalUrl = `data:image/png;base64,${lastBase64}`;
+                    const generated: GeneratedImage = {
+                      id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                      url: finalUrl,
+                      params: JSON.parse(JSON.stringify({...params, seed: seedToUse})),
+                      timestamp: Date.now(),
+                      isNew: batchTotal.value > 1
+                    };
+                    pushGeneratedImage(generated);
+                    if (activeBlobUrl) {
+                      URL.revokeObjectURL(activeBlobUrl);
+                      activeBlobUrl = null;
+                    }
+                    streamPreviewUrl.value = null;
+                    streamResultSaved = true;
                   }
-                } catch (e) {
+                } catch (e: any) {
+                  if (e.message && !e.message.includes('JSON')) {
+                    throw e;
+                  }
                   console.warn('Failed to parse stream chunk');
                 }
               }
@@ -834,15 +870,21 @@ export const useGenerationStore = defineStore('generation', () => {
           }
           
           // 如果流结束了但我们没有捕获到 final 事件，把最后一张预览图作为最终结果保存
-          if (!streamResultSaved && streamPreviewUrl.value) {
+          if (!streamResultSaved && lastBase64) {
+            const finalUrl = `data:image/png;base64,${lastBase64}`;
             const generated: GeneratedImage = {
               id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-              url: streamPreviewUrl.value,
+              url: finalUrl,
               params: JSON.parse(JSON.stringify({...params, seed: seedToUse})),
               timestamp: Date.now(),
               isNew: batchTotal.value > 1
             };
             pushGeneratedImage(generated);
+            streamResultSaved = true;
+          }
+
+          if (!streamResultSaved) {
+            throw new Error('流式生成结束，但未收到有效图像数据');
           }
         } finally {
           clearTimeout(timeoutId);

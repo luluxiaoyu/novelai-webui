@@ -62,13 +62,13 @@ export const logGeneration = (
     if (details?.error) {
       if (typeof details.error === 'string') {
         safeError = details.error;
-      } else if (details.error?.message) {
-        safeError = details.error.message;
+      } else if (Buffer.isBuffer(details.error) || details.error instanceof ArrayBuffer || ArrayBuffer.isView(details.error)) {
+        safeError = Buffer.from(details.error as any).toString('utf-8');
       } else if (typeof details.error === 'object') {
         try {
           safeError = JSON.stringify(details.error);
         } catch {
-          safeError = '[Unserializable Error]';
+          safeError = details.error?.message || '[Unserializable Error]';
         }
       } else {
         safeError = String(details.error);

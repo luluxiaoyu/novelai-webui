@@ -38,7 +38,15 @@ export const forwardRequest = async (client: any, req: any, res: any, path: stri
   } catch (error: any) {
     console.error(`Error proxying ${path}:`, error.message);
     if (error.response) {
-      return res.status(error.response.status).json(error.response.data instanceof Buffer ? JSON.parse(error.response.data.toString()) : error.response.data);
+      let data = error.response.data;
+      if (Buffer.isBuffer(data) || data instanceof ArrayBuffer || ArrayBuffer.isView(data)) {
+        try {
+          data = JSON.parse(Buffer.from(data as any).toString('utf-8'));
+        } catch {
+          data = { message: Buffer.from(data as any).toString('utf-8') };
+        }
+      }
+      return res.status(error.response.status).json(data);
     }
     return res.status(500).json({ error: 'Internal Server Error', details: error.message });
   }

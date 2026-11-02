@@ -2150,15 +2150,6 @@ watch(
               待重绘
             </div>
 
-            <!-- 已超分标识 Tag (放置在画布右上角，避免遮挡左上角缩放条；移动端位于 top-16 避免遮挡右上角操作栏) -->
-            <div 
-              v-if="isImageUpscaled(genStore.currentImage)"
-              class="absolute top-16 right-4 sm:top-4 sm:right-4 bg-amber-500/90 text-white text-xs px-2.5 py-1 rounded-full shadow-lg backdrop-blur-sm z-20 flex items-center gap-1.5 font-medium border border-amber-300/40 pointer-events-none animate-fade-in"
-            >
-              <Maximize2 class="w-3.5 h-3.5" />
-              <span>超分辨率</span>
-            </div>
-
             <!-- 浮动操作栏 (移动端放置在右上角 top-4 right-4，彻底解决与底部导航挤压冲突；PC端保留在右下角) -->
             <div class="absolute top-4 right-4 sm:top-auto sm:bottom-4 sm:right-4 flex items-center gap-1.5 sm:gap-2 z-30">
               <button 
