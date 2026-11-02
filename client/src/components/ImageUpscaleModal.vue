@@ -37,7 +37,6 @@ const originalParams = ref<any>(null);
 const targetWidth = computed(() => Math.round(rawWidth.value * 2));
 const targetHeight = computed(() => Math.round(rawHeight.value * 2));
 const targetPixels = computed(() => targetWidth.value * targetHeight.value);
-const pixelMultiplier = 4;
 
 // 上传交互与拖拽状态
 const isDragging = ref(false);
@@ -109,7 +108,7 @@ const handleFile = (file: File) => {
         const w = img.naturalWidth || img.width;
         const h = img.naturalHeight || img.height;
         if (dataUrl.startsWith('data:image/png;base64,')) {
-          loadDataUrlWithDimensions(dataUrl, `本地导入图片: ${file.name}`, null);
+          loadDataUrlWithDimensions(dataUrl, file.name, null);
         } else {
           const canvas = document.createElement('canvas');
           canvas.width = w;
@@ -117,9 +116,9 @@ const handleFile = (file: File) => {
           const ctx = canvas.getContext('2d');
           if (ctx) {
             ctx.drawImage(img, 0, 0);
-            loadDataUrlWithDimensions(canvas.toDataURL('image/png'), `本地导入图片: ${file.name}`, null);
+            loadDataUrlWithDimensions(canvas.toDataURL('image/png'), file.name, null);
           } else {
-            loadDataUrlWithDimensions(dataUrl, `本地导入图片: ${file.name}`, null);
+            loadDataUrlWithDimensions(dataUrl, file.name, null);
           }
         }
         activeTab.value = 'upload';
@@ -191,14 +190,14 @@ const autoFitToLimit = () => {
   }
 };
 
-// 执行 AI 超分
+// 执行超分辨率放大
 const handleStartUpscale = async () => {
   if (!activeDataUrl.value) {
-    errorMessage.value = '请先提供或上传一张图片';
+    errorMessage.value = '请先选择或导入图片';
     return;
   }
   if (isOverLimit.value) {
-    errorMessage.value = '当前原图尺寸超出了官方超分限制 (1024x1024 面积)，请先缩放后重试';
+    errorMessage.value = '原图尺寸超过输入限制（最大 1,048,576 像素），请先缩放后重试';
     return;
   }
 
@@ -216,7 +215,7 @@ const handleStartUpscale = async () => {
     emit('success', result);
     emit('update:modelValue', false);
   } catch (err: any) {
-    errorMessage.value = err.message || '超分放大失败';
+    errorMessage.value = err.message || '超分辨率处理失败';
   }
 };
 </script>
@@ -231,19 +230,19 @@ const handleStartUpscale = async () => {
       class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl w-full max-w-xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden transition-all text-gray-800 dark:text-gray-100"
     >
       <!-- 弹窗顶栏 -->
-      <div class="px-5 py-3.5 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between shrink-0 bg-gray-50/70 dark:bg-gray-950/40">
-        <div class="flex items-center gap-2">
-          <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-500 text-white flex items-center justify-center shadow-md shadow-amber-500/20">
+      <div class="px-5 py-3.5 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between shrink-0 bg-gray-50/60 dark:bg-gray-950/40">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900/40 flex items-center justify-center shrink-0">
             <Sparkles class="w-4 h-4" />
           </div>
           <div>
-            <h3 class="text-sm sm:text-base font-bold tracking-tight">AI 超分辨率扩图 (Upscale)</h3>
-            <p class="text-[11px] text-gray-500 dark:text-gray-400">无损提升画质与分辨率，保持原有画风与细节</p>
+            <h3 class="text-sm sm:text-base font-bold tracking-tight text-gray-900 dark:text-gray-100">图像超分辨率</h3>
+            <p class="text-[11px] text-gray-500 dark:text-gray-400">提升画面分辨率并重构高频细节</p>
           </div>
         </div>
         <button 
           @click="emit('update:modelValue', false)"
-          class="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200/50 dark:hover:bg-gray-800 rounded-lg transition"
+          class="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition"
         >
           <X class="w-4 h-4" />
         </button>
@@ -260,7 +259,7 @@ const handleStartUpscale = async () => {
             :class="activeTab === 'current' ? 'bg-white dark:bg-gray-900 text-blue-600 dark:text-blue-400 shadow-sm font-semibold' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'"
           >
             <ImageIcon class="w-3.5 h-3.5" />
-            <span>当前画布图片</span>
+            <span>当前画布</span>
           </button>
           <button 
             @click="activeTab = 'upload'"
@@ -268,7 +267,7 @@ const handleStartUpscale = async () => {
             :class="activeTab === 'upload' ? 'bg-white dark:bg-gray-900 text-blue-600 dark:text-blue-400 shadow-sm font-semibold' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'"
           >
             <UploadCloud class="w-3.5 h-3.5" />
-            <span>上传本地图片</span>
+            <span>本地导入</span>
           </button>
         </div>
 
@@ -289,18 +288,18 @@ const handleStartUpscale = async () => {
             class="hidden" 
             @change="onFileInputChange" 
           />
-          <div class="w-12 h-12 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-500 flex items-center justify-center">
-            <UploadCloud class="w-6 h-6" />
+          <div class="w-10 h-10 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+            <UploadCloud class="w-5 h-5" />
           </div>
           <div>
-            <p class="text-xs sm:text-sm font-semibold text-gray-800 dark:text-gray-200">点击选择或拖拽本地图片到此处</p>
-            <p class="text-[11px] text-gray-400 mt-0.5">支持 PNG, JPG, JPEG, WEBP 格式</p>
+            <p class="text-xs sm:text-sm font-medium text-gray-800 dark:text-gray-200">选择或拖拽图片至此处</p>
+            <p class="text-[11px] text-gray-400 mt-0.5">支持 PNG、JPG、WEBP 格式</p>
           </div>
         </div>
 
-        <!-- 当前选中图片预览与分辨率对比卡片 -->
+        <!-- 当前选中图片预览与分辨率卡片 -->
         <div v-if="activeDataUrl" class="space-y-3">
-          <div class="flex items-center gap-4 p-3 bg-gray-50 dark:bg-gray-950/40 rounded-xl border border-gray-200/80 dark:border-gray-800">
+          <div class="flex items-center gap-3.5 p-3 bg-gray-50/80 dark:bg-gray-950/40 rounded-xl border border-gray-200/80 dark:border-gray-800">
             <!-- 缩略图 -->
             <div class="relative w-20 h-20 sm:w-24 sm:h-24 rounded-lg overflow-hidden bg-gray-200/50 dark:bg-gray-800/50 shrink-0 border border-gray-200 dark:border-gray-700 flex items-center justify-center">
               <img :src="activeDataUrl" class="w-full h-full object-contain" />
@@ -309,7 +308,7 @@ const handleStartUpscale = async () => {
             <!-- 分辨率与像素信息卡片 -->
             <div class="flex-1 min-w-0 flex flex-col justify-between py-0.5">
               <div class="flex items-center justify-between gap-1 mb-1.5">
-                <span class="text-xs font-bold text-gray-700 dark:text-gray-300">分辨率对比</span>
+                <span class="text-xs font-semibold text-gray-700 dark:text-gray-300">分辨率变更</span>
                 <button 
                   v-if="activeTab === 'upload'" 
                   @click="fileInputRef?.click()" 
@@ -322,28 +321,28 @@ const handleStartUpscale = async () => {
 
               <!-- 对比徽章 -->
               <div class="flex items-center gap-2 text-xs">
-                <div class="bg-gray-200/80 dark:bg-gray-800 px-2.5 py-1 rounded-md font-mono text-gray-700 dark:text-gray-300">
+                <div class="bg-gray-200/70 dark:bg-gray-800 px-2.5 py-1 rounded-md font-mono text-gray-700 dark:text-gray-300">
                   {{ rawWidth }} × {{ rawHeight }}
                 </div>
                 <ArrowRight class="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                <div class="bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 px-2.5 py-1 rounded-md font-mono font-bold flex items-center gap-1 shadow-sm border border-amber-200/50 dark:border-amber-800/50">
+                <div class="bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 px-2.5 py-1 rounded-md font-mono font-semibold flex items-center gap-1 border border-blue-200/60 dark:border-blue-900/50">
                   <span>{{ targetWidth }} × {{ targetHeight }}</span>
-                  <span class="text-[10px] opacity-80">({{ pixelMultiplier }}x 像素)</span>
+                  <span class="text-[10px] opacity-75">(4× 面积)</span>
                 </div>
               </div>
 
-              <!-- 合规状态徽标 -->
+              <!-- 规格限制指示器 -->
               <div class="mt-2 flex items-center gap-1.5 text-[11px]">
                 <template v-if="!isOverLimit">
-                  <span class="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium">
-                    <Check class="w-3.5 h-3.5" />
-                    尺寸合规 ({{ totalPixels.toLocaleString() }} px ≤ 官方上限 104 万)
+                  <span class="inline-flex items-center gap-1 text-gray-500 dark:text-gray-400">
+                    <Check class="w-3.5 h-3.5 text-emerald-500" />
+                    <span>输入像素: {{ totalPixels.toLocaleString() }} / 1,048,576</span>
                   </span>
                 </template>
                 <template v-else>
-                  <span class="inline-flex items-center gap-1 text-red-600 dark:text-red-400 font-semibold">
+                  <span class="inline-flex items-center gap-1 text-red-600 dark:text-red-400 font-medium">
                     <AlertTriangle class="w-3.5 h-3.5 shrink-0" />
-                    超出官方限制 ({{ totalPixels.toLocaleString() }} px > 104 万)
+                    <span>超出输入上限 ({{ totalPixels.toLocaleString() }} > 1,048,576 像素)</span>
                   </span>
                 </template>
               </div>
@@ -357,7 +356,7 @@ const handleStartUpscale = async () => {
           >
             <div class="flex items-start gap-2">
               <AlertCircle class="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-              <span>官方超分接口限制原图必须在 1024×1024（104万像素）以内。</span>
+              <span>原图尺寸超过接口输入限制（最大 1,048,576 像素）。</span>
             </div>
             <button 
               @click="autoFitToLimit"
@@ -365,46 +364,47 @@ const handleStartUpscale = async () => {
               class="w-full sm:w-auto px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition text-xs shrink-0 flex items-center justify-center gap-1 shadow-sm disabled:opacity-50"
             >
               <Loader2 v-if="isResizing" class="w-3 h-3 animate-spin" />
-              <span>一键等比适配至上限</span>
+              <span>等比缩放至上限</span>
             </button>
           </div>
         </div>
 
-        <!-- 官方超分规格说明卡片 -->
-        <div class="border border-amber-200/80 dark:border-amber-900/50 bg-gradient-to-r from-amber-50/60 to-orange-50/40 dark:from-amber-950/20 dark:to-orange-950/10 rounded-xl p-3.5 flex flex-col gap-2">
+        <!-- 规格说明卡片 -->
+        <div class="border border-gray-200 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-950/30 rounded-xl p-3.5 flex flex-col gap-2">
           <div class="flex items-center justify-between">
-            <span class="text-xs sm:text-sm font-bold text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
-              <Sparkles class="w-4 h-4 text-amber-500" />
-              <span>官方原生 AI 超分辨率放大</span>
+            <span class="text-xs font-semibold text-gray-800 dark:text-gray-200">
+              放大倍率
             </span>
-            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
-              宽高 2x · 像素 4x
+            <span class="text-[10px] font-medium px-2 py-0.5 rounded-md bg-gray-200/80 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+              宽高 200% · 像素 4×
             </span>
           </div>
-          <p class="text-[11px] text-gray-600 dark:text-gray-400">
-            调用 NovelAI 原生超分神经网络，长宽各放大 2 倍，像素总数提升至 4 倍，边缘极致锐化去噪且无伪影。
+          <p class="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
+            基于深度学习超分辨率算法重建高频细节，长宽各扩展为 2 倍，提升边缘清晰度。
           </p>
-          <div class="flex items-center justify-between text-[11px] font-mono text-gray-700 dark:text-gray-300 pt-2 border-t border-amber-200/40 dark:border-amber-900/30">
-            <span>放大后规格:</span>
-            <span class="font-bold text-amber-700 dark:text-amber-300">
+          <div class="flex items-center justify-between text-[11px] font-mono text-gray-600 dark:text-gray-400 pt-2 border-t border-gray-200/60 dark:border-gray-800/60">
+            <span>输出规格</span>
+            <span class="font-medium text-gray-800 dark:text-gray-200">
               {{ rawWidth ? Math.round(rawWidth * 2) : 0 }} × {{ rawHeight ? Math.round(rawHeight * 2) : 0 }}
-              <span class="font-normal opacity-75">({{ targetPixels.toLocaleString() }} px)</span>
+              <span class="font-normal text-gray-400">({{ targetPixels.toLocaleString() }} px)</span>
             </span>
           </div>
         </div>
 
-        <!-- 点数消耗与说明卡片 -->
-        <div class="p-3 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40 rounded-xl flex items-center justify-between text-xs">
-          <div class="flex items-center gap-2">
-            <Zap class="w-4 h-4 text-amber-500 shrink-0" />
+        <!-- 点数消耗卡片 -->
+        <div class="p-3 bg-gray-50/60 dark:bg-gray-950/30 border border-gray-200 dark:border-gray-800 rounded-xl flex items-center justify-between text-xs">
+          <div class="flex items-center gap-2.5">
+            <div class="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 border border-amber-200/60 dark:border-amber-900/40 flex items-center justify-center shrink-0">
+              <Zap class="w-3.5 h-3.5" />
+            </div>
             <div>
-              <span class="font-bold text-amber-900 dark:text-amber-200">预计消耗: 1 点数 (1 Anlas)</span>
-              <p class="text-[10px] text-amber-700/80 dark:text-amber-400/80">官方固定规则：无论有无 Opus 会员，超分操作均固定消耗 1 点</p>
+              <div class="font-semibold text-gray-800 dark:text-gray-200">消耗 1 点数</div>
+              <p class="text-[10px] text-gray-400">单次超分固定扣除（所有订阅层级均计费）</p>
             </div>
           </div>
           <div class="text-right shrink-0 font-mono">
-            <span class="text-gray-500 dark:text-gray-400 text-[10px] block">点数余额</span>
-            <span class="font-bold text-gray-800 dark:text-gray-200">{{ authStore.anlas.toLocaleString() }} 点</span>
+            <span class="text-gray-400 text-[10px] block">当前余额</span>
+            <span class="font-semibold text-gray-800 dark:text-gray-200">{{ authStore.anlas.toLocaleString() }} 点</span>
           </div>
         </div>
 
@@ -417,11 +417,11 @@ const handleStartUpscale = async () => {
       </div>
 
       <!-- 弹窗底栏操作按钮 -->
-      <div class="px-5 py-3.5 border-t border-gray-100 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-950/40 flex items-center justify-between shrink-0">
+      <div class="px-5 py-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-950/40 flex items-center justify-between shrink-0">
         <button 
           @click="emit('update:modelValue', false)"
           :disabled="genStore.isUpscaling"
-          class="px-4 py-2 text-xs font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 rounded-xl hover:bg-gray-200/60 dark:hover:bg-gray-800 transition disabled:opacity-50"
+          class="px-4 py-2 text-xs font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition disabled:opacity-50"
         >
           取消
         </button>
@@ -429,11 +429,11 @@ const handleStartUpscale = async () => {
         <button 
           @click="handleStartUpscale"
           :disabled="!activeDataUrl || isOverLimit || genStore.isUpscaling"
-          class="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs sm:text-sm font-bold rounded-xl shadow-lg shadow-amber-500/25 transition flex items-center gap-2"
+          class="px-5 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs sm:text-sm font-medium rounded-xl shadow-sm shadow-blue-500/20 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 flex items-center gap-2"
         >
           <Loader2 v-if="genStore.isUpscaling" class="w-4 h-4 animate-spin" />
           <Sparkles v-else class="w-4 h-4" />
-          <span>{{ genStore.isUpscaling ? 'AI 正在超分放大中...' : '开始 AI 超分 (消耗 1 点)' }}</span>
+          <span>{{ genStore.isUpscaling ? '正在处理...' : '开始超分 (消耗 1 点)' }}</span>
         </button>
       </div>
 
