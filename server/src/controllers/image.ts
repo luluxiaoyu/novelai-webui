@@ -156,3 +156,90 @@ export const getQueueStatus = async (req: Request, res: Response) => {
 export const suggestTags = async (req: Request, res: Response) => {
   await forwardRequest(naiImageClient, req, res, '/ai/generate-image/suggest-tags');
 };
+
+export const upscaleImage = async (req: Request, res: Response) => {
+  const token = resolveNovelAIToken(req);
+  if (!token) return res.status(401).json({ error: 'Missing authorization header or invalid token' });
+
+  // 校验付费权限：超分操作固定消耗 1 点数 (1 Anlas)
+  const siteAuth = (req as any).siteAuth;
+  if (siteAuth && siteAuth.allowPaid === false) {
+    const errorMsg = '该访问密钥仅限使用免费额度，AI超分需消耗 1 点数，当前无权使用';
+    logGeneration(req, 'upscale', 'failed', { error: errorMsg });
+    return res.status(403).json({ error: errorMsg });
+  }
+
+  const { image, width, height, scale } = req.body || {};
+  if (!image) {
+    return res.status(400).json({ error: '缺少待超分的图像数据 (image)' });
+  }
+
+  const numWidth = Number(width);
+  const numHeight = Number(height);
+  const numScale = Number(scale) || 2;
+
+  if (!numWidth || !numHeight) {
+    return res.status(400).json({ error: '缺少图像分辨率参数 (width, height)' });
+  }
+
+  if (numScale !== 2 && numScale !== 4) {
+    return res.status(400).json({ error: '放大倍率仅支持 2 或 4 (scale: 2 | 4)' });
+  }
+
+  // 官方硬限制：原图总像素不得超过 1,048,576 像素 (等效 1024x1024)
+  if (numWidth * numHeight > 1048576) {
+    const errorMsg = `原图尺寸 (${numWidth}x${numHeight} = ${numWidth * numHeight} 像素) 超出了官方超分限制 (最大 1,048,576 像素，约 1024x1024)`;
+    logGeneration(req, 'upscale', 'failed', { error: errorMsg });
+    return res.status(400).json({ error: errorMsg });
+  }
+
+  const isBuiltin = (req.headers.authorization || '').includes('__BUILTIN__') || (getBuiltinToken() && token === `Bearer ${getBuiltinToken()}`);
+  const tokenKey = isBuiltin ? '__BUILTIN__' : token;
+
+  try {
+    await generationQueue.enqueue(tokenKey, req, res, async () => {
+      console.log(`[upscaleImage] Sending upscale request to NovelAI: ${numWidth}x${numHeight}, scale=${numScale}`);
+      
+      const rawBase64 = typeof image === 'string' && image.includes(',') ? image.split(',')[1] : image;
+      const payload = {
+        image: rawBase64,
+        width: numWidth,
+        height: numHeight,
+        scale: numScale
+      };
+
+      const response = await naiImageClient.post('/ai/upscale', payload, {
+        headers: {
+          'Authorization': token,
+          'Content-Type': 'application/json',
+          'Accept': '*/*'
+        },
+        responseType: 'arraybuffer',
+        timeout: 120000
+      });
+
+      logGeneration(req, 'upscale', 'success');
+
+      res.setHeader('Content-Type', 'application/zip');
+      res.status(200).send(response.data);
+    });
+  } catch (error: any) {
+    if (res.headersSent) return;
+    console.error(`Error upscaling image:`, error.message);
+    let parsedData = error.response?.data;
+    if (parsedData instanceof Buffer) {
+      const text = parsedData.toString('utf-8');
+      try {
+        parsedData = JSON.parse(text);
+      } catch {
+        parsedData = { message: text };
+      }
+    }
+    logGeneration(req, 'upscale', 'failed', { error: parsedData || error.message });
+    if (error.response) {
+      console.error(`NovelAI upstream upscale error [${error.response.status}]:`, JSON.stringify(parsedData));
+      return res.status(error.response.status).json(parsedData);
+    }
+    return res.status(error.status || 500).json({ error: error.message || 'Internal Server Error' });
+  }
+};

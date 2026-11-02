@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { getUserSubscription, getUserData, getUserInformation } from '../controllers/user';
-import { generateImage, generateImageStream, getQueueStatus, suggestTags } from '../controllers/image';
+import { generateImage, generateImageStream, getQueueStatus, suggestTags, upscaleImage } from '../controllers/image';
 import { getAuthStatus, verifyAccessKey } from '../controllers/auth';
 import { siteAuthMiddleware } from '../middlewares/auth';
 
@@ -26,6 +26,9 @@ router.post('/generate-image-stream', generateImageStream);
 router.post('/ai/generate-image-stream', generateImageStream);
 router.get('/ai/generate-image/suggest-tags', suggestTags);
 router.get('/generate-image/suggest-tags', suggestTags);
+
+router.post('/upscale', upscaleImage);
+router.post('/ai/upscale', upscaleImage);
 
 router.post('/webdav/action', webdavAction);
 

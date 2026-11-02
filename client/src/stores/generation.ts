@@ -439,6 +439,7 @@ export const useGenerationStore = defineStore('generation', () => {
   const enableTagSuggestions = ref(false);
   const enableStreamThrottle = ref(false);
   const isGenerating = ref(false);
+  const isUpscaling = ref(false);
   const queueInfo = ref<{ waiting: number; active: number; isBusy: boolean } | null>(null);
   let queuePollTimer: any = null;
 
@@ -1017,6 +1018,103 @@ export const useGenerationStore = defineStore('generation', () => {
     params.mask = undefined;
   };
 
+  const upscaleImage = async (options: {
+    image: string;
+    width: number;
+    height: number;
+    scale: 2 | 4;
+    originalParams?: any;
+    originalPrompt?: string;
+  }): Promise<GeneratedImage> => {
+    const authStore = useAuthStore();
+    isUpscaling.value = true;
+    error.value = '';
+
+    try {
+      const rawBase64 = options.image.includes('base64,')
+        ? options.image.split('base64,')[1]
+        : options.image;
+
+      const headers: Record<string, string> = {
+        'Accept': '*/*'
+      };
+      if (authStore.token) {
+        headers['Authorization'] = authStore.token.startsWith('Bearer ')
+          ? authStore.token
+          : `Bearer ${authStore.token}`;
+      }
+
+      const res = await encryptedAxios({
+        method: 'POST',
+        url: '/api/upscale',
+        data: {
+          image: rawBase64,
+          width: options.width,
+          height: options.height,
+          scale: options.scale
+        },
+        headers,
+        responseType: 'arraybuffer'
+      });
+
+      const zip = new JSZip();
+      const loadedZip = await zip.loadAsync(res.data);
+      const files = Object.keys(loadedZip.files);
+      if (files.length === 0) {
+        throw new Error('未在返回的压缩包中找到超分图像文件');
+      }
+
+      const file = loadedZip.files[files[0]];
+      const base64Data = await file.async('base64');
+      const dataUrl = `data:image/png;base64,${base64Data}`;
+
+      const targetWidth = Math.round(options.width * options.scale);
+      const targetHeight = Math.round(options.height * options.scale);
+
+      const baseParams = options.originalParams ? JSON.parse(JSON.stringify(options.originalParams)) : { ...params };
+      baseParams.width = targetWidth;
+      baseParams.height = targetHeight;
+      if (options.originalPrompt) {
+        baseParams.prompt = options.originalPrompt;
+      }
+
+      const generated: GeneratedImage = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        url: dataUrl,
+        params: baseParams,
+        timestamp: Date.now(),
+        isNew: true
+      };
+
+      pushGeneratedImage(generated);
+
+      // 异步刷新点数余额
+      try {
+        await authStore.fetchUserData();
+      } catch (e) {
+        console.warn('刷新订阅与点数失败:', e);
+      }
+
+      return generated;
+    } catch (err: any) {
+      let errMsg = err.message || '超分放大失败';
+      if (err.response?.data) {
+        let data = err.response.data;
+        if (data instanceof ArrayBuffer) {
+          try {
+            data = JSON.parse(new TextDecoder().decode(data));
+          } catch {}
+        }
+        if (data?.error) errMsg = data.error;
+        else if (data?.message) errMsg = data.message;
+      }
+      error.value = errMsg;
+      throw new Error(errMsg);
+    } finally {
+      isUpscaling.value = false;
+    }
+  };
+
   const deletePromptHistory = (id: string) => {
     promptHistory.value = promptHistory.value.filter(p => p.id !== id);
     const webdavStore = useWebDAVStore();
@@ -1220,6 +1318,8 @@ export const useGenerationStore = defineStore('generation', () => {
     useParams, 
     usePrompt, 
     sendToInpaint,
+    isUpscaling,
+    upscaleImage,
     deletePromptHistory, 
     toggleFavoritePrompt,
     updatePromptNote,

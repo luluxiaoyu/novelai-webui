@@ -7,7 +7,7 @@ import {
   X, Search, Calendar, Download, Trash2, SlidersHorizontal, 
   Paintbrush, Copy, Check, Archive, CheckSquare, Square, 
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Grid, 
-  Layers, Clock, ArrowUpDown
+  Layers, Clock, ArrowUpDown, Sparkles
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -17,6 +17,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void;
   (e: 'send-inpaint', item: GeneratedImage): void;
+  (e: 'open-upscale', item: GeneratedImage): void;
 }>();
 
 const genStore = useGenerationStore();
@@ -819,6 +820,14 @@ const formatDateFull = (timestamp: number) => {
                         <span>重绘</span>
                       </button>
                       <button 
+                        @click.stop="$emit('open-upscale', item); $emit('update:modelValue', false)"
+                        class="px-2 py-1 rounded-lg text-[11px] text-gray-700 hover:text-amber-600 dark:text-gray-300 dark:hover:text-amber-400 bg-gray-100 hover:bg-amber-50 dark:bg-gray-800 dark:hover:bg-amber-950/40 transition flex items-center gap-1 active:scale-95"
+                        title="AI 超分放大此图 (消耗 1 点数)"
+                      >
+                        <Sparkles class="w-3 h-3 text-amber-500" />
+                        <span>超分</span>
+                      </button>
+                      <button 
                         @click.stop="reuseParams(item)"
                         class="px-2 py-1 rounded-lg text-[11px] text-gray-700 hover:text-purple-600 dark:text-gray-300 dark:hover:text-purple-400 bg-gray-100 hover:bg-purple-50 dark:bg-gray-800 dark:hover:bg-purple-950/40 transition flex items-center gap-1 active:scale-95"
                         title="复用此图生成参数"
@@ -1114,6 +1123,13 @@ const formatDateFull = (timestamp: number) => {
 
           <!-- 底部重绘与复用按钮栏 -->
           <div class="flex flex-col gap-2 pt-4 border-t border-gray-100 dark:border-gray-800 mt-4">
+            <button 
+              @click="$emit('open-upscale', selectedImage); $emit('update:modelValue', false)"
+              class="w-full py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-xl font-medium transition flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 active:scale-[0.99] text-xs"
+            >
+              <Sparkles class="w-4 h-4" />
+              <span>AI 超分放大此图 (Upscale)</span>
+            </button>
             <button 
               @click="sendInpaint(selectedImage)"
               class="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 active:scale-[0.99] text-xs"

@@ -5,7 +5,7 @@ import { isLoggingEnabled } from './config';
 
 export const logGeneration = (
   req: Request,
-  type: 'normal' | 'stream',
+  type: 'normal' | 'stream' | 'upscale',
   status: 'success' | 'failed' | 'processing',
   details?: any
 ) => {
@@ -45,6 +45,12 @@ export const logGeneration = (
     }
     if (cleanParams.mask) {
       cleanParams.mask = `[Base64 Mask, len: ${cleanParams.mask.length}]`;
+    }
+    if (body.image && typeof body.image === 'string') {
+      cleanParams.image = `[Base64 Image, len: ${body.image.length}]`;
+      if (body.width) cleanParams.width = body.width;
+      if (body.height) cleanParams.height = body.height;
+      if (body.scale) cleanParams.scale = body.scale;
     }
 
     const ip = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';

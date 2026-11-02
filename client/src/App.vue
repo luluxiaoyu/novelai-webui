@@ -14,6 +14,7 @@ import PromptEditorModal from './components/PromptEditorModal.vue';
 import ImageGalleryModal from './components/ImageGalleryModal.vue';
 import StorageMigrationModal from './components/StorageMigrationModal.vue';
 import V5UsageModal from './components/V5UsageModal.vue';
+import ImageUpscaleModal from './components/ImageUpscaleModal.vue';
 import { parsePngMetadata, type ParsedImageMetadata } from './utils/pngMetadata';
 import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Palette, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud, Cloud, Wifi, Sparkles, ChevronDown, ChevronUp, RotateCcw, FileText, Plus, Minus, Users, User, UserPlus, Clock, Maximize2, HelpCircle, Zap } from 'lucide-vue-next';
 
@@ -25,6 +26,13 @@ const showStyleLibrary = ref(false);
 const showPromptEditor = ref(false);
 const showImageGallery = ref(false);
 const showV5UsageModal = ref(false);
+const showUpscaleModal = ref(false);
+const upscaleTargetImage = ref<any>(null);
+
+const openUpscaleModal = (img?: any) => {
+  upscaleTargetImage.value = img || genStore.currentImage || null;
+  showUpscaleModal.value = true;
+};
 const connectionStatus = ref<{ type: 'success' | 'error', text: string } | null>(null);
 
 const handleGalleryInpaint = (item: any) => {
@@ -1164,6 +1172,16 @@ watch(
           </div>
           
           <div class="flex items-center gap-1 sm:gap-1.5 ml-2">
+            <!-- AI 超分扩图入口 -->
+            <button 
+              @click="openUpscaleModal(null)" 
+              class="text-gray-600 hover:text-amber-600 dark:text-gray-400 dark:hover:text-amber-400 p-1.5 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-950/40 transition flex items-center gap-1.5 text-xs font-medium border border-gray-200 dark:border-gray-700 shadow-sm shrink-0"
+              title="AI 超分辨率放大 (支持本地传图与现有图，消耗 1 点数)"
+            >
+              <Sparkles class="w-4 h-4 text-amber-500" />
+              <span class="hidden sm:inline">AI超分</span>
+            </button>
+
             <!-- 大屏图库入口 -->
             <button 
               @click="showImageGallery = true" 
@@ -2124,6 +2142,14 @@ watch(
 
             <!-- 浮动操作栏 (移动端放置在右上角 top-4 right-4，彻底解决与底部导航挤压冲突；PC端保留在右下角) -->
             <div class="absolute top-4 right-4 sm:top-auto sm:bottom-4 sm:right-4 flex items-center gap-1.5 sm:gap-2 z-30">
+              <button 
+                @click="openUpscaleModal(genStore.currentImage)" 
+                class="bg-white/95 hover:bg-amber-50 dark:bg-gray-900/95 dark:hover:bg-amber-950/40 text-gray-700 dark:text-gray-200 hover:text-amber-600 dark:hover:text-amber-400 border border-gray-200 dark:border-gray-700 p-2 sm:p-2.5 rounded-xl shadow-lg transition backdrop-blur-md flex items-center gap-1 text-xs font-semibold" 
+                title="AI 超分辨率放大此图 (消耗 1 点数)"
+              >
+                <Sparkles class="w-4 h-4 sm:w-5 sm:h-5 text-amber-500" />
+                <span class="hidden md:inline text-xs">超分</span>
+              </button>
               <button @click="downloadImage" class="bg-white/95 hover:bg-blue-50 dark:bg-gray-900/95 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 p-2 sm:p-2.5 rounded-xl shadow-lg transition backdrop-blur-md" title="下载原图">
                 <Download class="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
@@ -2275,6 +2301,14 @@ watch(
                   >
                     <Paintbrush class="w-3 h-3 text-blue-500" />
                     <span>重绘</span>
+                  </button>
+                  <button 
+                    @click.stop="openUpscaleModal(item)" 
+                    class="text-gray-600 hover:text-amber-600 dark:text-gray-400 dark:hover:text-amber-400 font-medium py-1 px-1.5 rounded hover:bg-amber-50 dark:hover:bg-amber-950/40 transition flex items-center gap-1 text-[11px]"
+                    title="AI 超分放大此图 (消耗 1 点数)"
+                  >
+                    <Sparkles class="w-3 h-3 text-amber-500" />
+                    <span>超分</span>
                   </button>
                   <button 
                     @click.stop="genStore.useParams(item); mobileTab = 'controls'" 
@@ -2934,6 +2968,7 @@ watch(
     <ImageGalleryModal 
       v-model="showImageGallery" 
       @send-inpaint="handleGalleryInpaint" 
+      @open-upscale="openUpscaleModal"
     />
 
     <!-- 存储架构升级迁移弹窗 (用户确认与实时进度) -->
@@ -2941,6 +2976,9 @@ watch(
 
     <!-- V5 额度恢复与详情弹窗 -->
     <V5UsageModal v-model="showV5UsageModal" />
+
+    <!-- AI 超分放大弹窗 (双模式：现有图/本地上传) -->
+    <ImageUpscaleModal v-model="showUpscaleModal" :target-image="upscaleTargetImage" />
 
     <!-- 页面拖拽悬浮提示遮罩 -->
     <div 
