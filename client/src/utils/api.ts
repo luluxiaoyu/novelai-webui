@@ -14,13 +14,21 @@ const getEncryptKey = (headers?: any) => {
 };
 
 export const encryptedAxios = async (config: AxiosRequestConfig) => {
-  if (!isEncryptionEnabled) {
-    return axios(config);
+  const authStore = useAuthStore();
+  const modifiedConfig = { ...config };
+  const headers = { ...(config.headers || {}) } as Record<string, any>;
+  modifiedConfig.headers = headers;
+
+  if (authStore.siteAccessKey && !headers['x-access-key']) {
+    headers['x-access-key'] = authStore.siteAccessKey;
   }
 
-  const key = getEncryptKey(config.headers);
-  const modifiedConfig = { ...config };
-  modifiedConfig.headers = { ...modifiedConfig.headers, 'x-encrypted': '1' };
+  if (!isEncryptionEnabled) {
+    return axios(modifiedConfig);
+  }
+
+  const key = getEncryptKey(headers);
+  headers['x-encrypted'] = '1';
 
   if (modifiedConfig.data) {
     let dataToEncrypt = modifiedConfig.data;
@@ -29,7 +37,7 @@ export const encryptedAxios = async (config: AxiosRequestConfig) => {
     }
     const bytes = typeof dataToEncrypt === 'string' ? new TextEncoder().encode(dataToEncrypt) : dataToEncrypt;
     modifiedConfig.data = xorUint8Array(bytes, key).buffer;
-    modifiedConfig.headers['Content-Type'] = 'application/octet-stream';
+    headers['Content-Type'] = 'application/octet-stream';
   }
 
   const originalResponseType = modifiedConfig.responseType;
@@ -73,16 +81,33 @@ export const encryptedAxios = async (config: AxiosRequestConfig) => {
 };
 
 export const encryptedFetchStream = async (url: string, options: RequestInit) => {
-  if (!isEncryptionEnabled) return fetch(url, options);
+  const authStore = useAuthStore();
+  const headersObj: Record<string, string> = {};
+  if (options.headers) {
+    if (options.headers instanceof Headers) {
+      options.headers.forEach((v, k) => { headersObj[k] = v; });
+    } else if (Array.isArray(options.headers)) {
+      options.headers.forEach(([k, v]) => { headersObj[k] = v; });
+    } else {
+      Object.assign(headersObj, options.headers);
+    }
+  }
 
-  const key = getEncryptKey(options.headers);
-  const modifiedOptions = { ...options };
-  modifiedOptions.headers = { ...modifiedOptions.headers, 'x-encrypted': '1' };
+  if (authStore.siteAccessKey && !headersObj['x-access-key']) {
+    headersObj['x-access-key'] = authStore.siteAccessKey;
+  }
+
+  const modifiedOptions: RequestInit = { ...options, headers: headersObj };
+
+  if (!isEncryptionEnabled) return fetch(url, modifiedOptions);
+
+  const key = getEncryptKey(headersObj);
+  headersObj['x-encrypted'] = '1';
 
   if (modifiedOptions.body) {
     const bytes = new TextEncoder().encode(modifiedOptions.body as string);
     modifiedOptions.body = xorUint8Array(bytes, key).buffer as any;
-    (modifiedOptions.headers as Record<string, string>)['Content-Type'] = 'application/octet-stream';
+    headersObj['Content-Type'] = 'application/octet-stream';
   }
 
   const response = await fetch(url, modifiedOptions);

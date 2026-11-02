@@ -1043,6 +1043,9 @@ export const useGenerationStore = defineStore('generation', () => {
           ? authStore.token
           : `Bearer ${authStore.token}`;
       }
+      if (authStore.siteAccessKey) {
+        headers['x-access-key'] = authStore.siteAccessKey;
+      }
 
       const modelToUse = options.originalParams?.model || params.model || 'nai-diffusion-5-full';
 
