@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import { useGenerationStore, type GeneratedImage } from '../stores/generation';
+import { useGenerationStore, isImageUpscaled, type GeneratedImage } from '../stores/generation';
 import { useAuthStore } from '../stores/auth';
 import { 
   X, Sparkles, UploadCloud, AlertCircle, Check, Loader2, 
@@ -349,9 +349,18 @@ const handleStartUpscale = async () => {
             </div>
           </div>
 
+          <!-- 若已是超分图，给出直接提示 -->
+          <div 
+            v-if="activeTab === 'current' && isImageUpscaled(props.targetImage)" 
+            class="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-xl flex items-center gap-2 text-xs text-amber-700 dark:text-amber-300"
+          >
+            <AlertCircle class="w-4 h-4 text-amber-500 shrink-0" />
+            <span>当前图片已是超分辨率放大产物，官方接口不支持对已超分图片再次放大。</span>
+          </div>
+
           <!-- 超限警示与一键适配按钮条 -->
           <div 
-            v-if="isOverLimit" 
+            v-else-if="isOverLimit" 
             class="p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 text-xs text-red-700 dark:text-red-300 animate-fade-in"
           >
             <div class="flex items-start gap-2">
@@ -428,12 +437,12 @@ const handleStartUpscale = async () => {
 
         <button 
           @click="handleStartUpscale"
-          :disabled="!activeDataUrl || isOverLimit || genStore.isUpscaling"
+          :disabled="!activeDataUrl || isOverLimit || genStore.isUpscaling || (activeTab === 'current' && isImageUpscaled(props.targetImage))"
           class="px-5 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs sm:text-sm font-medium rounded-xl shadow-sm shadow-blue-500/20 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 flex items-center gap-2"
         >
           <Loader2 v-if="genStore.isUpscaling" class="w-4 h-4 animate-spin" />
           <Sparkles v-else class="w-4 h-4" />
-          <span>{{ genStore.isUpscaling ? '正在处理...' : '开始超分 (消耗 1 点)' }}</span>
+          <span>{{ genStore.isUpscaling ? '正在处理...' : ((activeTab === 'current' && isImageUpscaled(props.targetImage)) ? '该图已完成超分' : '开始超分 (消耗 1 点)') }}</span>
         </button>
       </div>
 

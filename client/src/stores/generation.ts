@@ -43,6 +43,7 @@ export interface GenerationParams {
   noise?: number;
   auto_quality_presets?: boolean;
   transparent_bg?: boolean;
+  is_upscaled?: boolean;
 }
 
 export const OFFICIAL_V5_POS_PRESET = ', no text, best quality, very aesthetic, absurdres, very aesthetic, masterpiece, no text';
@@ -54,7 +55,25 @@ export interface GeneratedImage {
   params: GenerationParams;
   timestamp: number;
   isNew?: boolean;
+  isUpscaled?: boolean;
 }
+
+/**
+ * 判断一张图片是否已经是超分后的图像
+ * 1. 显式标记 isUpscaled === true 或 params.is_upscaled === true
+ * 2. 图像像素数超过 1,048,576 (NovelAI 原生生图最高支持 1048576 像素，超过此尺寸必然是超分结果，且无法再次作为输入超分)
+ */
+export const isImageUpscaled = (img?: GeneratedImage | null): boolean => {
+  if (!img) return false;
+  if (img.isUpscaled === true) return true;
+  if (img.params?.is_upscaled === true) return true;
+  if (img.params?.width && img.params?.height) {
+    if (img.params.width * img.params.height > 1048576) {
+      return true;
+    }
+  }
+  return false;
+};
 
 
 
@@ -1098,6 +1117,7 @@ export const useGenerationStore = defineStore('generation', () => {
       const baseParams = options.originalParams ? JSON.parse(JSON.stringify(options.originalParams)) : { ...params };
       baseParams.width = actualWidth;
       baseParams.height = actualHeight;
+      baseParams.is_upscaled = true;
       if (options.originalPrompt) {
         baseParams.prompt = options.originalPrompt;
       }
@@ -1107,7 +1127,8 @@ export const useGenerationStore = defineStore('generation', () => {
         url: dataUrl,
         params: baseParams,
         timestamp: Date.now(),
-        isNew: true
+        isNew: true,
+        isUpscaled: true
       };
 
       pushGeneratedImage(generated);

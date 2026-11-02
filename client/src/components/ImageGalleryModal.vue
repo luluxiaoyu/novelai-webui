@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
-import { useGenerationStore, type GeneratedImage } from '../stores/generation';
+import { useGenerationStore, isImageUpscaled, type GeneratedImage } from '../stores/generation';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { 
   X, Search, Calendar, Download, Trash2, SlidersHorizontal, 
   Paintbrush, Copy, Check, Archive, CheckSquare, Square, 
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Grid, 
-  Layers, Clock, ArrowUpDown, Sparkles
+  Layers, Clock, ArrowUpDown, Sparkles, Maximize2
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -791,6 +791,16 @@ const formatDateFull = (timestamp: number) => {
                     <Square v-else class="w-4 h-4 text-gray-300" />
                   </div>
 
+                  <!-- 超分标识 Tag -->
+                  <div 
+                    v-if="isImageUpscaled(item)" 
+                    class="absolute top-2 z-10 bg-amber-500/90 text-white text-[9px] font-semibold px-1.5 py-0.5 rounded backdrop-blur-sm pointer-events-none flex items-center gap-0.5 shadow-sm border border-amber-300/40"
+                    :class="isBatchMode ? 'right-2' : 'left-2'"
+                  >
+                    <Maximize2 class="w-2.5 h-2.5" />
+                    <span>超分</span>
+                  </div>
+
                   <!-- 尺寸与时间徽章 -->
                   <div class="absolute bottom-1.5 left-1.5 right-1.5 flex justify-between items-center text-[9px] font-mono text-white pointer-events-none z-10">
                     <span class="bg-black/65 px-1.5 py-0.5 rounded backdrop-blur-sm shadow-sm">{{ item.params.width }}x{{ item.params.height }}</span>
@@ -808,32 +818,31 @@ const formatDateFull = (timestamp: number) => {
                     <span class="text-blue-600 dark:text-blue-400 font-semibold">{{ item.params.steps || 28 }}步</span>
                   </div>
 
-                  <!-- 显式按钮条：重绘/复用/下载/删除 -->
+                  <!-- 显式按钮条：重绘/复用/下载/删除 (纯图标布局，彻底避免窄卡片文字换行) -->
                   <div class="flex items-center justify-between pt-1.5 border-t border-gray-100 dark:border-gray-800/80">
                     <div class="flex items-center gap-1">
                       <button 
                         @click.stop="sendInpaint(item)"
-                        class="px-2 py-1 rounded-lg text-[11px] text-gray-700 hover:text-blue-600 dark:text-gray-300 dark:hover:text-blue-400 bg-gray-100 hover:bg-blue-50 dark:bg-gray-800 dark:hover:bg-blue-950/40 transition flex items-center gap-1 active:scale-95"
+                        class="p-1.5 rounded-lg text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition active:scale-95"
                         title="发送到涂鸦重绘"
                       >
-                        <Paintbrush class="w-3 h-3 text-blue-500" />
-                        <span>重绘</span>
+                        <Paintbrush class="w-3.5 h-3.5 text-blue-500" />
                       </button>
                       <button 
                         @click.stop="$emit('open-upscale', item); $emit('update:modelValue', false)"
-                        class="px-2 py-1 rounded-lg text-[11px] text-gray-700 hover:text-amber-600 dark:text-gray-300 dark:hover:text-amber-400 bg-gray-100 hover:bg-amber-50 dark:bg-gray-800 dark:hover:bg-amber-950/40 transition flex items-center gap-1 active:scale-95"
-                        title="AI 超分放大此图 (消耗 1 点数)"
+                        :disabled="isImageUpscaled(item)"
+                        class="p-1.5 rounded-lg transition active:scale-95"
+                        :class="isImageUpscaled(item) ? 'opacity-35 cursor-not-allowed text-gray-400 dark:text-gray-600' : 'text-gray-500 hover:text-amber-600 dark:text-gray-400 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40'"
+                        :title="isImageUpscaled(item) ? '该图已完成超分，不可再次放大' : '超分辨率放大此图 (消耗 1 点数)'"
                       >
-                        <Sparkles class="w-3 h-3 text-amber-500" />
-                        <span>超分</span>
+                        <Sparkles class="w-3.5 h-3.5 text-amber-500" :class="{ 'grayscale opacity-40': isImageUpscaled(item) }" />
                       </button>
                       <button 
                         @click.stop="reuseParams(item)"
-                        class="px-2 py-1 rounded-lg text-[11px] text-gray-700 hover:text-purple-600 dark:text-gray-300 dark:hover:text-purple-400 bg-gray-100 hover:bg-purple-50 dark:bg-gray-800 dark:hover:bg-purple-950/40 transition flex items-center gap-1 active:scale-95"
-                        title="复用此图生成参数"
+                        class="p-1.5 rounded-lg text-gray-500 hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/40 transition active:scale-95"
+                        title="复用此图全部参数"
                       >
-                        <SlidersHorizontal class="w-3 h-3 text-purple-500" />
-                        <span>复用</span>
+                        <SlidersHorizontal class="w-3.5 h-3.5 text-purple-500" />
                       </button>
                     </div>
 
@@ -1124,22 +1133,32 @@ const formatDateFull = (timestamp: number) => {
           <!-- 底部重绘与复用按钮栏 -->
           <div class="flex flex-col gap-2 pt-4 border-t border-gray-100 dark:border-gray-800 mt-4">
             <button 
+              v-if="!isImageUpscaled(selectedImage)"
               @click="$emit('open-upscale', selectedImage); $emit('update:modelValue', false)"
-              class="w-full py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-xl font-medium transition flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 active:scale-[0.99] text-xs"
+              class="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-medium transition flex items-center justify-center gap-1.5 shadow-sm active:scale-[0.99] text-xs"
             >
               <Sparkles class="w-4 h-4" />
-              <span>AI 超分放大此图 (Upscale)</span>
+              <span>超分辨率放大此图 (消耗 1 点)</span>
+            </button>
+            <button 
+              v-else
+              disabled
+              class="w-full py-2.5 bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 border border-gray-200 dark:border-gray-700 rounded-xl font-medium flex items-center justify-center gap-1.5 text-xs cursor-not-allowed opacity-60"
+              title="该图已完成超分，不可再次放大"
+            >
+              <Sparkles class="w-4 h-4 grayscale" />
+              <span>该图已完成超分辨率放大</span>
             </button>
             <button 
               @click="sendInpaint(selectedImage)"
-              class="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 active:scale-[0.99] text-xs"
+              class="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition flex items-center justify-center gap-1.5 shadow-sm active:scale-[0.99] text-xs"
             >
               <Paintbrush class="w-4 h-4" />
               <span>发送到涂鸦重绘 (Inpaint)</span>
             </button>
             <button 
               @click="reuseParams(selectedImage)"
-              class="w-full py-2.5 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 rounded-xl font-medium transition flex items-center justify-center gap-2 active:scale-[0.99] text-xs"
+              class="w-full py-2.5 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 rounded-xl font-medium transition flex items-center justify-center gap-1.5 active:scale-[0.99] text-xs"
             >
               <SlidersHorizontal class="w-4 h-4" />
               <span>复用此图全部参数</span>

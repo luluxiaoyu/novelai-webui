@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useAuthStore } from './stores/auth';
-import { useGenerationStore } from './stores/generation';
+import { useGenerationStore, isImageUpscaled } from './stores/generation';
 import { useWebDAVStore } from './stores/webdav';
 import { saveAs } from 'file-saver';
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
@@ -2145,6 +2145,15 @@ watch(
               待重绘
             </div>
 
+            <!-- 已超分标识 Tag -->
+            <div 
+              v-if="isImageUpscaled(genStore.currentImage)"
+              class="absolute top-4 left-4 bg-amber-500/90 text-white text-xs px-2.5 py-1 rounded-full shadow-lg backdrop-blur-sm z-20 flex items-center gap-1.5 font-medium border border-amber-300/40 pointer-events-none animate-fade-in"
+            >
+              <Maximize2 class="w-3.5 h-3.5" />
+              <span>超分辨率</span>
+            </div>
+
             <!-- 浮动操作栏 (移动端放置在右上角 top-4 right-4，彻底解决与底部导航挤压冲突；PC端保留在右下角) -->
             <div class="absolute top-4 right-4 sm:top-auto sm:bottom-4 sm:right-4 flex items-center gap-1.5 sm:gap-2 z-30">
               <button 
@@ -2156,10 +2165,12 @@ watch(
               </button>
               <button 
                 @click="openUpscaleModal(genStore.currentImage)" 
-                class="bg-white/95 hover:bg-amber-50 dark:bg-gray-900/95 dark:hover:bg-amber-950/40 text-gray-700 dark:text-gray-200 hover:text-amber-600 dark:hover:text-amber-400 border border-gray-200 dark:border-gray-700 p-2 sm:p-2.5 rounded-xl shadow-lg transition backdrop-blur-md flex items-center justify-center active:scale-95" 
-                title="AI 超分辨率放大此图 (消耗 1 点数)"
+                :disabled="isImageUpscaled(genStore.currentImage)"
+                class="border border-gray-200 dark:border-gray-700 p-2 sm:p-2.5 rounded-xl shadow-lg transition backdrop-blur-md flex items-center justify-center active:scale-95" 
+                :class="isImageUpscaled(genStore.currentImage) ? 'bg-gray-100/90 dark:bg-gray-800/90 text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-40' : 'bg-white/95 hover:bg-amber-50 dark:bg-gray-900/95 dark:hover:bg-amber-950/40 text-gray-700 dark:text-gray-200 hover:text-amber-600 dark:hover:text-amber-400'"
+                :title="isImageUpscaled(genStore.currentImage) ? '该图已完成超分，不可再次放大' : '超分辨率放大此图 (消耗 1 点数)'"
               >
-                <Sparkles class="w-4 h-4 sm:w-5 sm:h-5 text-amber-500" />
+                <Sparkles class="w-4 h-4 sm:w-5 sm:h-5 text-amber-500" :class="{ 'grayscale opacity-50': isImageUpscaled(genStore.currentImage) }" />
               </button>
               <button @click="downloadImage" class="bg-white/95 hover:bg-blue-50 dark:bg-gray-900/95 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 p-2 sm:p-2.5 rounded-xl shadow-lg transition backdrop-blur-md active:scale-95" title="下载原图">
                 <Download class="w-4 h-4 sm:w-5 sm:h-5" />
@@ -2294,6 +2305,15 @@ watch(
                 <!-- 未读标签指示器 -->
                 <div v-if="item.isNew" class="absolute top-2 right-2 bg-blue-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-sm z-20 pointer-events-none tracking-widest border border-blue-400/50" style="text-indent: 0.1em;">新</div>
                 
+                <!-- 超分标识 Tag -->
+                <div 
+                  v-if="isImageUpscaled(item)" 
+                  class="absolute top-2 left-2 bg-amber-500/90 text-white text-[9px] font-semibold px-1.5 py-0.5 rounded backdrop-blur-sm z-20 pointer-events-none flex items-center gap-0.5 shadow-sm border border-amber-300/40"
+                >
+                  <Maximize2 class="w-2.5 h-2.5" />
+                  <span>超分</span>
+                </div>
+
                 <!-- 尺寸信息标签 -->
                 <div class="absolute bottom-1.5 left-2 bg-black/60 text-white text-[9px] font-mono px-1.5 py-0.5 rounded backdrop-blur-sm pointer-events-none z-10">
                   {{ item.params.width }}x{{ item.params.height }}
@@ -2314,10 +2334,12 @@ watch(
                   </button>
                   <button 
                     @click.stop="openUpscaleModal(item)" 
-                    class="text-gray-500 hover:text-amber-600 dark:text-gray-400 dark:hover:text-amber-400 p-1.5 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-950/40 transition active:scale-95"
-                    title="AI 超分放大此图 (消耗 1 点数)"
+                    :disabled="isImageUpscaled(item)"
+                    class="p-1.5 rounded-lg transition active:scale-95"
+                    :class="isImageUpscaled(item) ? 'opacity-35 cursor-not-allowed text-gray-400 dark:text-gray-600' : 'text-gray-500 hover:text-amber-600 dark:text-gray-400 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40'"
+                    :title="isImageUpscaled(item) ? '该图已完成超分，不可再次放大' : '超分放大此图 (消耗 1 点数)'"
                   >
-                    <Sparkles class="w-3.5 h-3.5 text-amber-500" />
+                    <Sparkles class="w-3.5 h-3.5 text-amber-500" :class="{ 'grayscale opacity-40': isImageUpscaled(item) }" />
                   </button>
                   <button 
                     @click.stop="genStore.useParams(item); mobileTab = 'controls'" 
