@@ -22,13 +22,7 @@ export const generateImage = async (req: Request, res: Response) => {
   try {
     await generationQueue.enqueue(tokenKey, req, res, async () => {
       const isZip = req.headers.accept === 'application/zip';
-      const logBody = { ...req.body };
-      if (logBody.parameters) {
-        logBody.parameters = { ...logBody.parameters };
-        if (logBody.parameters.image) logBody.parameters.image = `[base64 len: ${logBody.parameters.image.length}]`;
-        if (logBody.parameters.mask) logBody.parameters.mask = `[base64 len: ${logBody.parameters.mask.length}]`;
-      }
-      console.log(`[generateImage] Sending to NovelAI:`, JSON.stringify(logBody));
+      console.log(`[generateImage] Sending request to NovelAI (model: ${req.body?.model || 'nai-diffusion-5-full'})`);
       const response = await naiImageClient.post('/ai/generate-image', req.body, {
         headers: {
           'Authorization': token,
@@ -87,13 +81,7 @@ export const generateImageStream = async (req: Request, res: Response) => {
 
   try {
     await generationQueue.enqueue(tokenKey, req, res, async () => {
-      const logBody = { ...req.body };
-      if (logBody.parameters) {
-        logBody.parameters = { ...logBody.parameters };
-        if (logBody.parameters.image) logBody.parameters.image = `[base64 len: ${logBody.parameters.image.length}]`;
-        if (logBody.parameters.mask) logBody.parameters.mask = `[base64 len: ${logBody.parameters.mask.length}]`;
-      }
-      console.log(`[generateImageStream] Sending to NovelAI:`, JSON.stringify(logBody));
+      console.log(`[generateImageStream] Sending request to NovelAI (model: ${req.body?.model || 'nai-diffusion-5-full'})`);
 
       const response = await naiImageClient.post('/ai/generate-image-stream', req.body, {
         headers: {
@@ -223,7 +211,7 @@ export const upscaleImage = async (req: Request, res: Response) => {
   try {
     await generationQueue.enqueue(tokenKey, req, res, async () => {
       const targetModel = model || 'nai-diffusion-5-full';
-      console.log(`[upscaleImage] Sending upscale request to NovelAI: ${numWidth}x${numHeight}, model=${targetModel}, requestedScale=${numScale}`);
+      console.log(`[upscaleImage] Sending upscale request to NovelAI (model: ${targetModel}, scale: ${numScale})`);
       
       // 构造官方标准的 multipart/form-data 格式 (包含 image part 和 request json part)
       const boundary = `----WebKitFormBoundary${Math.random().toString(36).substring(2)}${Date.now().toString(36)}`;

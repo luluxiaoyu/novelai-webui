@@ -61,6 +61,11 @@ export default {
           '"Courier New"',
           'monospace'
         ]
+      },
+      colors: {
+        gray: {
+          850: '#172033'
+        }
       }
     },
   },

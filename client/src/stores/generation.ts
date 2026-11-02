@@ -1049,8 +1049,10 @@ export const useGenerationStore = defineStore('generation', () => {
     }
   };
 
-  const useParams = (historyItem: GeneratedImage) => {
-    Object.assign(params, historyItem.params);
+  const useParams = (historyItem: GeneratedImage | GenerationParams | any) => {
+    const targetParams = historyItem?.params ? historyItem.params : historyItem;
+    if (!targetParams) return;
+    Object.assign(params, targetParams);
     params.seed = -1; // 默认还原为随机种子，防止误点导致生成完全一样的图
   };
 
@@ -1432,6 +1434,26 @@ export const useGenerationStore = defineStore('generation', () => {
 }, {
   persist: {
     pick: ['params', 'promptHistory', 'savedPromptGroups', 'customCharacters', 'customStyles', 'enableTagSuggestions', 'enableStreamThrottle'],
-    storage: localStorage
+    storage: localStorage,
+    serializer: {
+      serialize: (state: any) => {
+        try {
+          const copy = { ...state };
+          if (copy.params) {
+            copy.params = { ...copy.params, image: undefined, mask: undefined };
+          }
+          return JSON.stringify(copy);
+        } catch {
+          return '';
+        }
+      },
+      deserialize: (str: string) => {
+        try {
+          return JSON.parse(str);
+        } catch {
+          return {};
+        }
+      }
+    }
   }
 });

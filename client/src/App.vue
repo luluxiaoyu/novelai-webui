@@ -1012,8 +1012,13 @@ onMounted(async () => {
   genStore.params.mask = undefined;
   showMaskEditor.value = false;
   
-  if (genStore.history.length > 0 && !genStore.currentImage) {
-    genStore.currentImage = genStore.history[0];
+  if (genStore.history.length > 0) {
+    if (!genStore.currentImage) {
+      genStore.currentImage = genStore.history[0];
+    }
+    if (!genStore.params.prompt && genStore.history[0]) {
+      genStore.useParams(genStore.history[0]);
+    }
   }
 
   if (authStore.siteUnlocked && authStore.token) {
@@ -1880,7 +1885,7 @@ watch(
             <div class="border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden transition-colors">
               <button 
                 @click="showAdvanced = !showAdvanced" 
-                class="w-full flex items-center justify-between p-2.5 bg-gray-50/80 dark:bg-gray-900/60 hover:bg-gray-100 dark:hover:bg-gray-850 text-xs font-medium text-gray-700 dark:text-gray-300 transition-colors"
+                class="w-full flex items-center justify-between p-2.5 bg-gray-50/80 dark:bg-gray-900/60 hover:bg-gray-100 dark:hover:bg-gray-800 text-xs font-medium text-gray-700 dark:text-gray-300 transition-colors"
               >
                 <div class="flex items-center gap-1.5">
                   <SlidersHorizontal class="w-3.5 h-3.5 text-blue-500" />
@@ -1981,7 +1986,7 @@ watch(
                 <div class="pt-1 border-t border-gray-100 dark:border-gray-900">
                   <button 
                     @click="genStore.resetAdvancedParams()" 
-                    class="w-full text-xs text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 bg-gray-100 dark:bg-gray-850 hover:bg-gray-200 dark:hover:bg-gray-800 py-2 px-3 rounded-lg border border-gray-200 dark:border-gray-700 transition flex items-center justify-center gap-1.5 font-medium"
+                    class="w-full text-xs text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 py-2 px-3 rounded-lg border border-gray-200 dark:border-gray-700 transition flex items-center justify-center gap-1.5 font-medium"
                   >
                     <RotateCcw class="w-3.5 h-3.5" />
                     <span>恢复高级参数为官方默认值</span>
