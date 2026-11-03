@@ -2762,7 +2762,7 @@ watch(
                 <span>手机端飞牛 App 内弱化显示效果</span>
               </div>
               <p class="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-                仅在检测到运行于手机飞牛 App 或内嵌 WebView 时生效。自动关闭高斯模糊并优化为轻量硬件淡入动画，消除安卓端渲染卡顿。PC 浏览器及正常手机独立浏览器不受影响。
+                在飞牛 App 内精简视觉特效，提升移动端浏览与操作流畅度。
               </p>
             </div>
             <label class="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
