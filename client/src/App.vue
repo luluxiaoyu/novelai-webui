@@ -414,7 +414,9 @@ const costInfo = computed(() => {
     genStore.params.height,
     genStore.params.steps,
     genStore.params.sm,
-    genStore.params.sm_dyn
+    genStore.params.sm_dyn,
+    genStore.params.model,
+    (genStore.params.image && genStore.params.strength !== undefined) ? genStore.params.strength : undefined
   ) * genStore.batchCount;
   
   const estimatedText = `消耗 ${anlasCost} Anlas`;
