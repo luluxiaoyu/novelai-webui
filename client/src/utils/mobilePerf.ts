@@ -19,7 +19,9 @@ export const isMobileFnosApp = (): boolean => {
   if (!isMobile) return false;
 
   // 3. 处于飞牛 App 或安卓内嵌 WebView 环境
-  const hasFnosTag = /fnos|fnnas/i.test(ua);
+  // 匹配实测飞牛 UA 专属标识：FNOS/1.2.0800、FNAppType/Android、fnnas 等
+  const hasFnosTag = /fnos|fnnas|fnapp/i.test(ua);
+  // 安卓系统内嵌 WebView 专属标识（包含 ; wv 或 Version/4.0 Chrome，独立手机 Chrome 绝无此特征）
   const isAndroidWebView = /Android/i.test(ua) && (/;\s*wv\b/i.test(ua) || /Version\/[\d.]+\s+Chrome/i.test(ua));
   let isMobileIframe = false;
   try {
