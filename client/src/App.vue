@@ -1252,8 +1252,9 @@ watch(
               Anlas: {{ authStore.anlas.toLocaleString() }}
             </span>
 
-            <!-- V5 额度单行徽章 (与其它徽章等高，点击打开完整额度详情弹窗) -->
+            <!-- V5 额度单行徽章 (会员订阅层级大于 0 时展示) -->
             <button 
+              v-if="authStore.subscriptionTier > 0"
               @click="showV5UsageModal = true"
               type="button"
               class="text-xs bg-purple-50 hover:bg-purple-100/80 dark:bg-purple-950/40 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 px-2.5 py-1.5 rounded-md border border-purple-200 hover:border-purple-300 dark:border-purple-800/60 dark:hover:border-purple-700 font-medium inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 transition cursor-pointer shadow-sm select-none"
@@ -2149,41 +2150,48 @@ watch(
             <!-- 待重绘标识 Tag -->
             <div 
               v-if="genStore.params.image && genStore.currentImage.url.split(',')[1] === genStore.params.image"
-              class="absolute top-16 right-4 sm:top-auto sm:bottom-4 sm:right-44 bg-blue-600/90 text-white text-xs px-3 py-1.5 rounded-full shadow-lg backdrop-blur-sm z-20 flex items-center gap-1.5 font-medium animate-fade-in"
+              class="absolute top-24 right-4 sm:top-auto sm:bottom-4 sm:right-60 bg-blue-600/90 text-white text-xs px-3 py-1.5 rounded-full shadow-lg backdrop-blur-sm z-20 flex items-center gap-1.5 font-medium animate-fade-in"
             >
               <Paintbrush class="w-3.5 h-3.5" />
               待重绘
             </div>
 
-            <!-- 浮动操作栏 (移动端放置在右上角 top-4 right-4，彻底解决与底部导航挤压冲突；PC端保留在右下角) -->
-            <div class="absolute top-4 right-4 sm:top-auto sm:bottom-4 sm:right-4 flex items-center gap-1.5 sm:gap-2 z-30">
-              <button 
-                @click="genStore.sendToInpaint(genStore.currentImage.url); showMaskEditor = true; initCanvas(); mobileTab = 'controls'" 
-                class="bg-white/95 hover:bg-blue-50 dark:bg-gray-900/95 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 border border-gray-200 dark:border-gray-700 p-2 sm:p-2.5 rounded-xl shadow-lg transition backdrop-blur-md flex items-center justify-center active:scale-95" 
-                title="发送到涂鸦重绘 (Inpaint)"
-              >
-                <Paintbrush class="w-4 h-4 sm:w-5 sm:h-5 text-blue-500" />
-              </button>
-              <button 
-                @click="openUpscaleModal(genStore.currentImage)" 
-                :disabled="isImageUpscaled(genStore.currentImage)"
-                class="border border-gray-200 dark:border-gray-700 p-2 sm:p-2.5 rounded-xl shadow-lg transition backdrop-blur-md flex items-center justify-center active:scale-95" 
-                :class="isImageUpscaled(genStore.currentImage) ? 'bg-gray-100/90 dark:bg-gray-800/90 text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-40' : 'bg-white/95 hover:bg-amber-50 dark:bg-gray-900/95 dark:hover:bg-amber-950/40 text-gray-700 dark:text-gray-200 hover:text-amber-600 dark:hover:text-amber-400'"
-                :title="isImageUpscaled(genStore.currentImage) ? '该图已完成超分，不可再次放大' : '超分辨率放大此图 (消耗 1 点数)'"
-              >
-                <Sparkles class="w-4 h-4 sm:w-5 sm:h-5 text-amber-500" :class="{ 'grayscale opacity-50': isImageUpscaled(genStore.currentImage) }" />
-              </button>
-              <button @click="downloadImage" class="bg-white/95 hover:bg-blue-50 dark:bg-gray-900/95 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 p-2 sm:p-2.5 rounded-xl shadow-lg transition backdrop-blur-md active:scale-95" title="下载原图">
-                <Download class="w-4 h-4 sm:w-5 sm:h-5" />
-              </button>
-              <button @click="copyImageToClipboard" class="bg-white/95 hover:bg-blue-50 dark:bg-gray-900/95 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 p-2 sm:p-2.5 rounded-xl shadow-lg transition backdrop-blur-md active:scale-95" title="复制图像到剪贴板">
-                <Check v-if="imageCopied" class="w-4 h-4 sm:w-5 sm:h-5 text-green-500" />
-                <Copy v-else class="w-4 h-4 sm:w-5 sm:h-5" />
-              </button>
-              <button @click="handleUseParams" class="bg-white/95 hover:bg-blue-50 dark:bg-gray-900/95 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 p-2 sm:p-2.5 rounded-xl shadow-lg transition backdrop-blur-md active:scale-95" title="复用此图全部参数">
-                <Check v-if="paramsCopied" class="w-4 h-4 sm:w-5 sm:h-5 text-green-500" />
-                <SlidersHorizontal v-else class="w-4 h-4 sm:w-5 sm:h-5" />
-              </button>
+            <!-- 浮动操作栏 (移动端在右上角采用两行紧凑布局：第1行重绘与超分，第2行下载、复制与复用参数，彻底消除与左侧缩放条的水平重叠；PC端保留在右下角单行横排) -->
+            <div class="absolute top-4 right-4 sm:top-auto sm:bottom-4 sm:right-4 flex flex-col sm:flex-row items-end sm:items-center gap-1.5 sm:gap-2 z-30">
+              <!-- 第 1 组操作 (移动端第 1 行 / PC端并排左侧)：重绘、超分 -->
+              <div class="flex items-center gap-1.5 sm:gap-2">
+                <button 
+                  @click="genStore.sendToInpaint(genStore.currentImage.url); showMaskEditor = true; initCanvas(); mobileTab = 'controls'" 
+                  class="bg-white/95 hover:bg-blue-50 dark:bg-gray-900/95 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 border border-gray-200 dark:border-gray-700 p-2 sm:p-2.5 rounded-xl shadow-lg transition backdrop-blur-md flex items-center justify-center active:scale-95" 
+                  title="发送到涂鸦重绘 (Inpaint)"
+                >
+                  <Paintbrush class="w-4 h-4 sm:w-5 sm:h-5 text-blue-500" />
+                </button>
+                <button 
+                  @click="openUpscaleModal(genStore.currentImage)" 
+                  :disabled="isImageUpscaled(genStore.currentImage)"
+                  class="border border-gray-200 dark:border-gray-700 p-2 sm:p-2.5 rounded-xl shadow-lg transition backdrop-blur-md flex items-center justify-center active:scale-95" 
+                  :class="isImageUpscaled(genStore.currentImage) ? 'bg-gray-100/90 dark:bg-gray-800/90 text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-40' : 'bg-white/95 hover:bg-amber-50 dark:bg-gray-900/95 dark:hover:bg-amber-950/40 text-gray-700 dark:text-gray-200 hover:text-amber-600 dark:hover:text-amber-400'"
+                  :title="isImageUpscaled(genStore.currentImage) ? '该图已完成超分，不可再次放大' : '超分辨率放大此图 (消耗 1 点数)'"
+                >
+                  <Sparkles class="w-4 h-4 sm:w-5 sm:h-5 text-amber-500" :class="{ 'grayscale opacity-50': isImageUpscaled(genStore.currentImage) }" />
+                </button>
+              </div>
+
+              <!-- 第 2 组操作 (移动端第 2 行 / PC端并排右侧)：下载原图、复制、复用参数 -->
+              <div class="flex items-center gap-1.5 sm:gap-2">
+                <button @click="downloadImage" class="bg-white/95 hover:bg-blue-50 dark:bg-gray-900/95 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 p-2 sm:p-2.5 rounded-xl shadow-lg transition backdrop-blur-md active:scale-95" title="下载原图">
+                  <Download class="w-4 h-4 sm:w-5 sm:h-5" />
+                </button>
+                <button @click="copyImageToClipboard" class="bg-white/95 hover:bg-blue-50 dark:bg-gray-900/95 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 p-2 sm:p-2.5 rounded-xl shadow-lg transition backdrop-blur-md active:scale-95" title="复制图像到剪贴板">
+                  <Check v-if="imageCopied" class="w-4 h-4 sm:w-5 sm:h-5 text-green-500" />
+                  <Copy v-else class="w-4 h-4 sm:w-5 sm:h-5" />
+                </button>
+                <button @click="handleUseParams" class="bg-white/95 hover:bg-blue-50 dark:bg-gray-900/95 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 p-2 sm:p-2.5 rounded-xl shadow-lg transition backdrop-blur-md active:scale-95" title="复用此图全部参数">
+                  <Check v-if="paramsCopied" class="w-4 h-4 sm:w-5 sm:h-5 text-green-500" />
+                  <SlidersHorizontal v-else class="w-4 h-4 sm:w-5 sm:h-5" />
+                </button>
+              </div>
             </div>
           </template>
 
