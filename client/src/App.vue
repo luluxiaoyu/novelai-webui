@@ -1248,7 +1248,7 @@ watch(
               内置 API Key
             </span>
             <span class="text-xs bg-gray-100 dark:bg-gray-800 px-2.5 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 font-medium inline-flex items-center gap-1.5 whitespace-nowrap">
-              <span>{{ authStore.subscriptionTier === 3 ? 'Opus 会员' : (authStore.subscriptionTier === 2 ? 'Scroll 会员' : (authStore.subscriptionTier === 1 ? 'Tablet 会员' : '免费/未定')) }}</span>
+              <span>{{ authStore.subscriptionTier === 3 ? 'Opus 会员' : (authStore.subscriptionTier === 2 ? 'Scroll 会员' : (authStore.subscriptionTier === 1 ? 'Tablet 会员' : '无订阅')) }}</span>
               <span v-if="authStore.expiresAt" class="text-gray-500 dark:text-gray-400 font-normal text-[10px] bg-gray-200/50 dark:bg-gray-700/50 px-1.5 py-0 rounded">
                 (至 {{ new Date(authStore.expiresAt * 1000).toLocaleDateString() }})
               </span>
