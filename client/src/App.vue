@@ -1180,7 +1180,7 @@ watch(
     <!-- 正常工作台流程 (通过密钥验证后才渲染顶部栏与后续页面) -->
     <div v-else key="workbench" class="flex-1 flex flex-col min-h-0 h-full overflow-hidden">
       <!-- 头部区域 (优化移动端与PC端适配) -->
-      <header class="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-4 py-2 flex flex-col md:flex-row justify-between items-start md:items-center gap-2 shadow-sm z-20 shrink-0 transition-colors relative">
+      <header class="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-4 py-2 flex flex-col md:flex-row justify-between items-start md:items-center gap-2 shadow-sm z-10 shrink-0 transition-colors relative">
         
         <!-- 第一行：Logo、标题以及全局操作按钮 (移动端也能完整显示) -->
         <div class="flex items-center justify-between w-full md:w-auto shrink-0">
@@ -1371,21 +1371,17 @@ watch(
     </main>
 
     <!-- 工作台页 (桌面端三栏并排各卡片内部滚动，手机端支持底部选项卡折叠切换) -->
-    <main 
-      class="p-3 md:p-4 flex flex-col lg:flex-row gap-4 flex-1 min-h-0 overflow-hidden relative lg:z-auto"
-      :class="mobileTab !== 'canvas' ? 'z-40' : 'z-10'"
-      v-else
-    >
+    <main class="p-3 md:p-4 flex flex-col lg:flex-row gap-4 flex-1 min-h-0 overflow-hidden relative" v-else>
       
       <!-- 移动端半透明背景遮罩 -->
       <div 
         v-if="mobileTab !== 'canvas'" 
         @click="mobileTab = 'canvas'"
-        class="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 lg:hidden animate-fade-in"
+        class="fixed inset-0 bg-black/50 backdrop-blur-sm z-30 lg:hidden animate-fade-in"
       ></div>
 
       <!-- 移动端底部悬浮导航 (胶囊栏) -->
-      <div class="lg:hidden fixed bottom-6 left-1/2 -translate-x-1/2 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border border-gray-200/50 dark:border-gray-700/50 rounded-full p-1.5 flex items-center gap-1 shadow-[0_8px_30px_rgb(0,0,0,0.12)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.3)] z-[60] transition-colors">
+      <div class="lg:hidden fixed bottom-6 left-1/2 -translate-x-1/2 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border border-gray-200/50 dark:border-gray-700/50 rounded-full p-1.5 flex items-center gap-1 shadow-[0_8px_30px_rgb(0,0,0,0.12)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.3)] z-50 transition-colors">
         <button 
           @click="mobileTab = mobileTab === 'controls' ? 'canvas' : 'controls'" 
           class="flex flex-col items-center justify-center w-16 h-12 rounded-full transition-all duration-300"
@@ -1420,25 +1416,10 @@ watch(
           lg:rounded-2xl border-r lg:border lg:border-gray-200 dark:border-gray-800 
           p-5 overflow-y-auto custom-scrollbar flex flex-col gap-5 shadow-2xl lg:shadow-sm 
           transition-transform duration-300 ease-in-out h-full
-          fixed inset-y-0 left-0 z-50 lg:static lg:transform-none lg:translate-x-0 pb-24 lg:pb-5
-          pt-[max(1.25rem,env(safe-area-inset-top))]
+          fixed inset-y-0 left-0 z-40 lg:static lg:transform-none lg:translate-x-0 pb-24 lg:pb-5
         "
         :class="mobileTab === 'controls' ? 'translate-x-0' : '-translate-x-full'"
       >
-        <!-- 移动端抽屉专属顶栏 (标题 + 关闭按钮) -->
-        <div class="lg:hidden flex justify-between items-center shrink-0 pb-3 border-b border-gray-100 dark:border-gray-800">
-          <div class="flex items-center gap-2">
-            <SlidersHorizontal class="w-4 h-4 text-blue-600 dark:text-blue-400" />
-            <h3 class="text-sm font-bold text-gray-800 dark:text-gray-200">生成参数设置</h3>
-          </div>
-          <button 
-            @click="mobileTab = 'canvas'"
-            class="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
-            title="关闭控制面板"
-          >
-            <X class="w-4 h-4" />
-          </button>
-        </div>
         <!-- 提示词输入区 -->
         <div class="flex flex-col gap-3">
           <div>
@@ -2278,8 +2259,7 @@ watch(
           border-l lg:border lg:border-gray-200 dark:border-gray-800 lg:rounded-2xl 
           p-3.5 flex flex-col gap-3 shadow-2xl lg:shadow-none
           transition-transform duration-300 ease-in-out h-full
-          fixed inset-y-0 right-0 z-50 lg:static lg:transform-none lg:translate-x-0 pb-24 lg:pb-3.5
-          pt-[max(0.875rem,env(safe-area-inset-top))]
+          fixed inset-y-0 right-0 z-40 lg:static lg:transform-none lg:translate-x-0 pb-24 lg:pb-3.5
         "
         :class="mobileTab === 'history' ? 'translate-x-0' : 'translate-x-full'"
       >
