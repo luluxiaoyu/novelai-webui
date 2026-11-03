@@ -16,7 +16,8 @@ import StorageMigrationModal from './components/StorageMigrationModal.vue';
 import V5UsageModal from './components/V5UsageModal.vue';
 import ImageUpscaleModal from './components/ImageUpscaleModal.vue';
 import { parsePngMetadata, type ParsedImageMetadata } from './utils/pngMetadata';
-import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Palette, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud, Cloud, Wifi, Sparkles, ChevronDown, ChevronUp, RotateCcw, FileText, Plus, Minus, Users, User, UserPlus, Clock, Maximize2, HelpCircle, Zap } from 'lucide-vue-next';
+import { getReduceMobileEffectsSetting, setReduceMobileEffectsSetting } from './utils/mobilePerf';
+import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Palette, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud, Cloud, Wifi, Sparkles, ChevronDown, ChevronUp, RotateCcw, FileText, Plus, Minus, Users, User, UserPlus, Clock, Maximize2, HelpCircle, Zap, Smartphone } from 'lucide-vue-next';
 
 const authStore = useAuthStore();
 const genStore = useGenerationStore();
@@ -87,7 +88,11 @@ const paramsCopied = ref(false);
 const imageCopied = ref(false);
 
 const showDataModal = ref(false);
-const dataModalTab = ref<'local'|'webdav'>('local');
+const dataModalTab = ref<'local'|'webdav'|'settings'>('local');
+const reduceMobileEffects = ref(getReduceMobileEffectsSetting());
+watch(reduceMobileEffects, (val) => {
+  setReduceMobileEffectsSetting(val);
+});
 const exportIncludeImages = ref(false);
 const importMode = ref<'merge' | 'overwrite'>('merge');
 const fileInputRef = ref<HTMLInputElement | null>(null);
@@ -2630,16 +2635,17 @@ watch(
         <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-950/50">
           <h3 class="text-base font-semibold flex items-center gap-2">
             <Database class="w-5 h-5 text-blue-500" />
-            数据管理与备份
+            数据管理与设置
           </h3>
           <button @click="showDataModal = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 transition">
             <X class="w-5 h-5" />
           </button>
         </div>
         
-        <div class="flex border-b border-gray-200 dark:border-gray-800">
-          <button @click="dataModalTab = 'local'" :class="dataModalTab === 'local' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'" class="flex-1 py-3 text-sm font-medium border-b-2 transition">本地 ZIP 备份</button>
-          <button @click="dataModalTab = 'webdav'" :class="dataModalTab === 'webdav' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'" class="flex-1 py-3 text-sm font-medium border-b-2 transition flex items-center justify-center gap-1"><Cloud class="w-4 h-4" /> WebDAV 同步</button>
+        <div class="flex border-b border-gray-200 dark:border-gray-800 text-xs sm:text-sm">
+          <button @click="dataModalTab = 'local'" :class="dataModalTab === 'local' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'" class="flex-1 py-3 font-medium border-b-2 transition">本地备份</button>
+          <button @click="dataModalTab = 'webdav'" :class="dataModalTab === 'webdav' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'" class="flex-1 py-3 font-medium border-b-2 transition flex items-center justify-center gap-1"><Cloud class="w-4 h-4" /> WebDAV</button>
+          <button @click="dataModalTab = 'settings'" :class="dataModalTab === 'settings' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'" class="flex-1 py-3 font-medium border-b-2 transition flex items-center justify-center gap-1"><Smartphone class="w-4 h-4" /> 移动端性能</button>
         </div>
         
         <div v-if="dataModalTab === 'local'" class="p-5 flex flex-col gap-6">
@@ -2743,6 +2749,25 @@ watch(
              <label class="relative inline-flex items-center cursor-pointer">
               <input type="checkbox" v-model="webdavStore.autoSync" class="sr-only peer">
               <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-500"></div>
+            </label>
+          </div>
+        </div>
+
+        <!-- 移动端性能设置 -->
+        <div v-if="dataModalTab === 'settings'" class="p-5 flex flex-col gap-4">
+          <div class="flex items-start justify-between p-4 bg-gray-50/80 dark:bg-gray-800/40 rounded-xl border border-gray-200 dark:border-gray-800">
+            <div class="space-y-1 pr-4">
+              <div class="font-medium text-gray-800 dark:text-gray-200 flex items-center gap-2 text-sm">
+                <Smartphone class="w-4 h-4 text-purple-500" />
+                <span>手机端飞牛 App 内弱化显示效果</span>
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+                仅在检测到运行于手机飞牛 App 或内嵌 WebView 时生效。自动关闭高斯模糊并优化为轻量硬件淡入动画，消除安卓端渲染卡顿。PC 浏览器及正常手机独立浏览器不受影响。
+              </p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
+              <input type="checkbox" v-model="reduceMobileEffects" class="sr-only peer">
+              <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
             </label>
           </div>
         </div>

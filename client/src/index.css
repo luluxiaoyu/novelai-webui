@@ -37,3 +37,59 @@ body {
 .animate-fade-in {
   animation: fadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+/* ==============================================================
+   仅在【移动端飞牛 App / 手机内嵌 WebView】时生效的性能减负优化
+   PC端（所有桌面浏览器、PC 飞牛桌面等）及正常手机独立浏览器绝不受任何影响
+   ============================================================== */
+html.is-fnos-mobile-app,
+html.is-fnos-mobile-app * {
+  /* 禁用高斯模糊，彻底消除安卓 WebView 逐帧 CPU 截屏位图高斯模糊导致的掉帧 */
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+html.is-fnos-mobile-app .backdrop-blur-sm,
+html.is-fnos-mobile-app .backdrop-blur-md,
+html.is-fnos-mobile-app .backdrop-blur-lg,
+html.is-fnos-mobile-app .backdrop-blur-xs {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* 提高半透明遮罩背景的纯净对比度，在没有高斯模糊的手机 WebView 下仍保持清晰高级的暗色质感 */
+html.is-fnos-mobile-app .bg-black\/50,
+html.is-fnos-mobile-app .bg-black\/60,
+html.is-fnos-mobile-app .bg-black\/70,
+html.is-fnos-mobile-app .bg-black\/75,
+html.is-fnos-mobile-app .bg-black\/85 {
+  background-color: rgba(0, 0, 0, 0.82) !important;
+}
+
+html.is-fnos-mobile-app .bg-white\/90,
+html.is-fnos-mobile-app .bg-white\/95 {
+  background-color: #ffffff !important;
+}
+
+html.is-fnos-mobile-app.dark .bg-gray-900\/90,
+html.is-fnos-mobile-app.dark .bg-gray-900\/95,
+html.is-fnos-mobile-app.dark .bg-gray-950\/90,
+html.is-fnos-mobile-app.dark .bg-gray-950\/95 {
+  background-color: #111827 !important;
+}
+
+/* 弹窗及容器动画改为纯 GPU 硬件合成透明度淡入，移除在安卓 WebView 中引发子树重绘的 scale 缩放 */
+html.is-fnos-mobile-app .animate-fade-in {
+  animation: fadeInMobileFast 0.12s ease-out forwards !important;
+  transform: translateZ(0);
+  will-change: opacity;
+}
+
+@keyframes fadeInMobileFast {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
