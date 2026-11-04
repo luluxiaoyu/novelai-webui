@@ -15,84 +15,9 @@ const emit = defineEmits<{
 const genStore = useGenerationStore();
 const webdavStore = useWebDAVStore();
 
-export interface CharacterPreset {
-  id: string;
-  name: string;
-  category: string;
-  prompt: string;
-  uc?: string;
-  isBuiltin?: boolean;
-  isFavorite?: boolean;
-  updatedAt?: number;
-}
+import { BUILTIN_PRESETS, type CharacterPreset } from '../data/characters';
 
-const BUILTIN_PRESETS: CharacterPreset[] = [
-  // 原神
-  {
-    id: 'genshin-nahida',
-    name: '纳西妲 (Nahida)',
-    category: '原神',
-    prompt: 'nahida(genshin impact)',
-    isBuiltin: true
-  },
-  {
-    id: 'genshin-klee',
-    name: '可莉 (Klee)',
-    category: '原神',
-    prompt: 'klee(genshin impact)',
-    isBuiltin: true
-  },
-  {
-    id: 'genshin-sigewinne',
-    name: '希格雯 (Sigewinne)',
-    category: '原神',
-    prompt: 'sigewinne(genshin impact)',
-    isBuiltin: true
-  },
-  {
-    id: 'genshin-sigewinne-luckin',
-    name: '希格雯·瑞幸联名 (Sigewinne Luckin Coffee)',
-    category: '原神',
-    prompt: 'sigewinne(luckin coffee)(genshin impact)',
-    isBuiltin: true
-  },
-  {
-    id: 'genshin-kachina',
-    name: '卡齐娜 (Kachina)',
-    category: '原神',
-    prompt: 'kachina(genshin impact)',
-    isBuiltin: true
-  },
-  {
-    id: 'genshin-diona',
-    name: '迪奥娜 (Diona)',
-    category: '原神',
-    prompt: 'diona(genshin impact)',
-    isBuiltin: true
-  },
-  {
-    id: 'genshin-qiqi',
-    name: '七七 (Qiqi)',
-    category: '原神',
-    prompt: 'qiqi(genshin impact)',
-    isBuiltin: true
-  },
-  // 崩铁
-  {
-    id: 'hsr-bailu',
-    name: '白露 (Bailu)',
-    category: '崩铁',
-    prompt: 'bailu(honkai:starrail)',
-    isBuiltin: true
-  },
-  {
-    id: 'hsr-huohuo',
-    name: '霍霍 (huohuo)',
-    category: '崩铁',
-    prompt: 'huohuo(honkai:starrail)',
-    isBuiltin: true
-  }
-];
+export type { CharacterPreset };
 
 const activeCategory = ref<string>('all');
 const searchQuery = ref<string>('');
@@ -118,10 +43,12 @@ const categories = computed(() => {
   const cats = new Set<string>();
   cats.add('原神');
   cats.add('崩铁');
-  cats.add('自定义');
-  (genStore.customCharacters || []).forEach(p => {
-    if (p.category) cats.add(p.category);
+  allPresets.value.forEach(p => {
+    if (p.category && p.category !== '原神' && p.category !== '崩铁' && p.category !== '自定义') {
+      cats.add(p.category);
+    }
   });
+  cats.add('自定义');
   return Array.from(cats);
 });
 
@@ -133,7 +60,7 @@ const filteredPresets = computed(() => {
       const q = searchQuery.value.toLowerCase().trim();
       const matchName = p.name.toLowerCase().includes(q);
       const matchPrompt = p.prompt.toLowerCase().includes(q);
-      const matchCategory = p.category.toLowerCase().includes(q);
+      const matchCategory = (p.category || '').toLowerCase().includes(q);
       if (!matchName && !matchPrompt && !matchCategory) return false;
     }
 
