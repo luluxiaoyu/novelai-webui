@@ -3,7 +3,7 @@ import { useAuthStore } from './stores/auth';
 import { useGenerationStore, isImageUpscaled } from './stores/generation';
 import { useWebDAVStore } from './stores/webdav';
 import { saveAs } from 'file-saver';
-import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
+import { computed, ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useDark, useToggle } from '@vueuse/core';
 import JSZip from 'jszip';
 import CustomSelect from './components/CustomSelect.vue';
@@ -36,12 +36,9 @@ const openUpscaleModal = (img?: any) => {
 };
 const connectionStatus = ref<{ type: 'success' | 'error', text: string } | null>(null);
 
-const handleGalleryInpaint = (item: any) => {
+const handleGalleryInpaint = async (item: any) => {
   genStore.currentImage = item;
-  genStore.sendToInpaint(item.url);
-  showMaskEditor.value = true;
-  initCanvas();
-  mobileTab.value = 'controls';
+  await openInpaintEditor(item.url);
 };
 
 const handleTestConnection = async () => {
@@ -821,7 +818,7 @@ const handleImportSelectedMetadata = () => {
   droppedImageInfo.value = null;
 };
 
-const applyDropAction = (action: 'inpaint' | 'img2img' | 'metadata') => {
+const applyDropAction = async (action: 'inpaint' | 'img2img' | 'metadata') => {
   if (!droppedImageInfo.value) return;
 
   const { processedDataUrl, processedBase64, targetWidth, targetHeight } = droppedImageInfo.value;
@@ -838,10 +835,11 @@ const applyDropAction = (action: 'inpaint' | 'img2img' | 'metadata') => {
       timestamp: Date.now()
     };
     showMaskEditor.value = true;
-    initCanvas();
     mobileTab.value = 'canvas';
     showDropActionModal.value = false;
     droppedImageInfo.value = null;
+    await nextTick();
+    initCanvas();
   } else if (action === 'img2img') {
     genStore.params.image = processedBase64;
     genStore.params.mask = undefined;
@@ -869,30 +867,109 @@ const handleImageUpload = (e: Event) => {
   }
 };
 
-const initCanvas = () => {
-  setTimeout(() => {
-    if (!canvasRef.value || !genStore.params.image) return;
-    const canvas = canvasRef.value;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+const inpaintImageSrc = computed(() => {
+  const img = genStore.params.image;
+  if (!img) return '';
+  if (img.startsWith('data:') || img.startsWith('blob:')) {
+    return img;
+  }
+  return `data:image/png;base64,${img}`;
+});
 
+const inpaintImgRef = ref<HTMLImageElement | null>(null);
+
+const isCurrentImageInpaint = computed(() => {
+  if (!genStore.params.image || !genStore.currentImage?.url) return false;
+  const curUrl = genStore.currentImage.url;
+  if (curUrl.includes('base64,')) {
+    return curUrl.split('base64,')[1] === genStore.params.image;
+  }
+  return curUrl === genStore.params.image || inpaintImageSrc.value === curUrl;
+});
+
+const openInpaintEditor = async (url?: string, preserveMask = false) => {
+  const targetUrl = url || genStore.currentImage?.url || genStore.params.image;
+  if (!targetUrl) return;
+
+  const isCurrent = Boolean(genStore.params.image && (
+    targetUrl === genStore.params.image ||
+    (inpaintImageSrc.value && targetUrl === inpaintImageSrc.value)
+  ));
+
+  const shouldPreserve = Boolean(preserveMask || (isCurrent && genStore.params.mask));
+
+  if (!isCurrent || !genStore.params.image) {
+    genStore.sendToInpaint(targetUrl, shouldPreserve);
+  }
+
+  showMaskEditor.value = true;
+  mobileTab.value = 'canvas';
+  resetZoom();
+  await nextTick();
+  initCanvas();
+};
+
+const applyDimensionsAndMask = (w: number, h: number) => {
+  if (!canvasRef.value || w <= 0 || h <= 0) return;
+  const canvas = canvasRef.value;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
+  }
+  genStore.params.width = Math.max(64, Math.round(w / 64) * 64);
+  genStore.params.height = Math.max(64, Math.round(h / 64) * 64);
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (genStore.params.mask) {
+    const maskImg = new Image();
+    maskImg.onload = () => {
+      ctx.drawImage(maskImg, 0, 0, canvas.width, canvas.height);
+    };
+    const rawMask = genStore.params.mask;
+    maskImg.src = rawMask.startsWith('data:') ? rawMask : `data:image/png;base64,${rawMask}`;
+  }
+};
+
+const initCanvas = () => {
+  if (!canvasRef.value || !inpaintImageSrc.value) return;
+
+  const inpaintImg = inpaintImgRef.value;
+  if (inpaintImg && inpaintImg.complete && inpaintImg.naturalWidth > 0) {
+    applyDimensionsAndMask(inpaintImg.naturalWidth, inpaintImg.naturalHeight);
+  } else {
     const img = new Image();
     img.onload = () => {
-      canvas.width = img.width;
-      canvas.height = img.height;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      applyDimensionsAndMask(img.naturalWidth || img.width, img.naturalHeight || img.height);
     };
-    img.src = `data:image/png;base64,${genStore.params.image}`;
-  }, 100);
+    img.src = inpaintImageSrc.value;
+  }
 };
+
+const handleInpaintImgLoaded = (e: Event) => {
+  const img = e.target as HTMLImageElement;
+  if (!img) return;
+  const w = img.naturalWidth || img.width;
+  const h = img.naturalHeight || img.height;
+  if (w > 0 && h > 0) {
+    applyDimensionsAndMask(w, h);
+  }
+};
+
+let lastDrawPos: { x: number; y: number } | null = null;
 
 const startDraw = (e: MouseEvent | TouchEvent) => {
   isDrawing.value = true;
+  lastDrawPos = null;
   draw(e);
 };
 
 const stopDraw = () => {
   isDrawing.value = false;
+  lastDrawPos = null;
   exportMask();
 };
 
@@ -903,19 +980,45 @@ const draw = (e: MouseEvent | TouchEvent) => {
   if (!ctx) return;
 
   const rect = canvas.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return;
+
   const scaleX = canvas.width / rect.width;
   const scaleY = canvas.height / rect.height;
 
-  const clientX = 'touches' in e ? e.touches[0].clientX : (e as MouseEvent).clientX;
-  const clientY = 'touches' in e ? e.touches[0].clientY : (e as MouseEvent).clientY;
+  let clientX = 0;
+  let clientY = 0;
+  if ('touches' in e) {
+    if (!e.touches || e.touches.length === 0) return;
+    clientX = e.touches[0].clientX;
+    clientY = e.touches[0].clientY;
+  } else {
+    clientX = (e as MouseEvent).clientX;
+    clientY = (e as MouseEvent).clientY;
+  }
 
   const x = (clientX - rect.left) * scaleX;
   const y = (clientY - rect.top) * scaleY;
 
+  const brushRadius = (brushSize.value * scaleX) / 2;
+
   ctx.fillStyle = 'white';
-  ctx.beginPath();
-  ctx.arc(x, y, brushSize.value * scaleX / 2, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.strokeStyle = 'white';
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = brushRadius * 2;
+
+  if (lastDrawPos) {
+    ctx.beginPath();
+    ctx.moveTo(lastDrawPos.x, lastDrawPos.y);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.arc(x, y, brushRadius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  lastDrawPos = { x, y };
 };
 
 const exportMask = () => {
@@ -936,6 +1039,19 @@ const exportMask = () => {
       const imgData = drawCtx.getImageData(0, 0, canvas.width, canvas.height);
       const maskData = mCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
       
+      let hasAnyPainted = false;
+      for (let i = 3; i < imgData.data.length; i += 4) {
+        if (imgData.data[i] > 0) {
+          hasAnyPainted = true;
+          break;
+        }
+      }
+
+      if (!hasAnyPainted) {
+        genStore.params.mask = undefined;
+        return;
+      }
+
       // NovelAI (V5/V3) VAE 潜空间严格依赖 8x8 像素块
       // 任何非 8x8 对齐的遮罩边缘都会导致 VAE 解码器产生 NaN 溢出（出现深绿色块）
       // 因此我们需要对遮罩进行 8x8 块的 max-pooling 扩充对齐
@@ -2038,11 +2154,11 @@ watch(
               
               <!-- 大缩略图与图层叠加 -->
               <div class="relative w-full h-32 rounded-lg overflow-hidden border border-gray-300 dark:border-gray-700 bg-black/10 flex items-center justify-center">
-                <img :src="'data:image/png;base64,' + genStore.params.image" class="absolute inset-0 w-full h-full object-contain" />
+                <img :src="inpaintImageSrc" class="absolute inset-0 w-full h-full object-contain" />
                 <img v-if="genStore.params.mask" :src="'data:image/png;base64,' + genStore.params.mask" class="absolute inset-0 w-full h-full object-contain mix-blend-screen opacity-50" />
               </div>
 
-              <button @click="showMaskEditor = true; initCanvas(); mobileTab = 'canvas'" class="w-full text-white font-medium bg-blue-600 hover:bg-blue-700 px-3 py-2 rounded-lg shadow-sm shadow-blue-500/20 transition text-center">
+              <button @click="openInpaintEditor(genStore.params.image, true)" class="w-full text-white font-medium bg-blue-600 hover:bg-blue-700 px-3 py-2 rounded-lg shadow-sm shadow-blue-500/20 transition text-center">
                 编辑涂鸦遮罩
               </button>
             </div>
@@ -2094,26 +2210,34 @@ watch(
           <!-- 局部重绘 涂鸦模式 -->
           <template v-if="genStore.params.image && showMaskEditor">
             <div 
-              class="flex items-center justify-center max-w-full max-h-full relative shadow-2xl rounded-lg overflow-hidden border border-gray-300 dark:border-gray-700"
+              class="flex items-center justify-center max-w-full max-h-full"
               :class="[
                 (isPanning || isTouchPanning) ? 'transition-none will-change-transform' : 'transition-transform duration-75 ease-out'
               ]"
               :style="{ transform: `translate(${imgTranslate.x}px, ${imgTranslate.y}px) scale(${imgScale})` }"
             >
-              <!-- 底图 -->
-              <img :src="'data:image/png;base64,' + genStore.params.image" class="max-w-[90vw] max-h-[90vh] object-contain pointer-events-none" />
-              <!-- 遮罩涂抹 Canvas -->
-              <canvas 
-                ref="canvasRef" 
-                class="absolute inset-0 w-full h-full cursor-crosshair opacity-75"
-                @mousedown.stop="startDraw"
-                @mousemove.stop="draw"
-                @mouseup.stop="stopDraw"
-                @mouseleave.stop="stopDraw"
-                @touchstart.stop.passive="startDraw"
-                @touchmove.stop.passive="draw"
-                @touchend.stop="stopDraw"
-              ></canvas>
+              <div class="relative shadow-2xl rounded-lg overflow-hidden border border-gray-300 dark:border-gray-700 shrink-0 select-none">
+                <!-- 底图 -->
+                <img 
+                  ref="inpaintImgRef"
+                  :src="inpaintImageSrc" 
+                  class="block max-w-[85vw] max-h-[85vh] w-auto h-auto pointer-events-none select-none" 
+                  draggable="false"
+                  @load="handleInpaintImgLoaded"
+                />
+                <!-- 遮罩涂抹 Canvas -->
+                <canvas 
+                  ref="canvasRef" 
+                  class="absolute inset-0 w-full h-full cursor-crosshair opacity-75 touch-none"
+                  @mousedown.stop="startDraw"
+                  @mousemove.stop="draw"
+                  @mouseup.stop="stopDraw"
+                  @mouseleave.stop="stopDraw"
+                  @touchstart.stop.prevent="startDraw"
+                  @touchmove.stop.prevent="draw"
+                  @touchend.stop="stopDraw"
+                ></canvas>
+              </div>
             </div>
             
             <!-- 涂鸦悬浮工具栏 (移动端避免被底部导航遮挡，设置 bottom-24) -->
@@ -2125,6 +2249,7 @@ watch(
               </div>
               <div class="w-px h-6 bg-gray-200 dark:bg-gray-700"></div>
               <button @click="resetMask" class="text-xs text-gray-600 hover:text-red-500 font-medium transition whitespace-nowrap">重置</button>
+              <button @click="showMaskEditor = false; mobileTab = 'controls'" class="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 font-medium transition whitespace-nowrap">取消</button>
               <button @click="exportMask(); showMaskEditor = false; mobileTab = 'controls'" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 sm:px-4 py-1.5 rounded-lg shadow-md shadow-blue-500/20 transition whitespace-nowrap">
                 保存涂鸦
               </button>
@@ -2156,7 +2281,7 @@ watch(
 
             <!-- 待重绘标识 Tag -->
             <div 
-              v-if="genStore.params.image && genStore.currentImage.url.split(',')[1] === genStore.params.image"
+              v-if="isCurrentImageInpaint"
               class="absolute top-24 right-4 sm:top-auto sm:bottom-4 sm:right-60 bg-blue-600/90 text-white text-xs px-3 py-1.5 rounded-full shadow-lg backdrop-blur-sm z-20 flex items-center gap-1.5 font-medium animate-fade-in"
             >
               <Paintbrush class="w-3.5 h-3.5" />
@@ -2168,7 +2293,7 @@ watch(
               <!-- 第 1 组操作 (移动端第 1 行 / PC端并排左侧)：重绘、超分 -->
               <div class="flex items-center gap-1.5 sm:gap-2">
                 <button 
-                  @click="genStore.sendToInpaint(genStore.currentImage.url); showMaskEditor = true; initCanvas(); mobileTab = 'controls'" 
+                  @click="openInpaintEditor(genStore.currentImage?.url)" 
                   class="bg-white/95 hover:bg-blue-50 dark:bg-gray-900/95 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 border border-gray-200 dark:border-gray-700 p-2 sm:p-2.5 rounded-xl shadow-lg transition backdrop-blur-md flex items-center justify-center active:scale-95" 
                   title="发送到涂鸦重绘 (Inpaint)"
                 >
@@ -2342,7 +2467,7 @@ watch(
               <div class="flex items-center justify-between px-2 py-1.5 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 text-xs">
                 <div class="flex items-center gap-1">
                   <button 
-                    @click.stop="genStore.currentImage = item; genStore.sendToInpaint(item.url); showMaskEditor = true; initCanvas(); mobileTab = 'controls'" 
+                    @click.stop="genStore.currentImage = item; openInpaintEditor(item.url)" 
                     class="text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/40 transition active:scale-95"
                     title="发送到涂鸦重绘"
                   >

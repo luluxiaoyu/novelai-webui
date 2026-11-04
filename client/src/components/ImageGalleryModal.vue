@@ -484,7 +484,6 @@ const reuseParams = (img: GeneratedImage) => {
 // 涂鸦重绘
 const sendInpaint = (img: GeneratedImage) => {
   genStore.currentImage = img;
-  genStore.sendToInpaint(img.url);
   emit('send-inpaint', img);
   emit('update:modelValue', false);
 };

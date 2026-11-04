@@ -1074,11 +1074,28 @@ export const useGenerationStore = defineStore('generation', () => {
     }
   };
 
-  const sendToInpaint = (imgUrl: string) => {
+  const sendToInpaint = (imgUrl: string, preserveMask = false) => {
     // 提取 base64
     const base64 = imgUrl.includes('base64,') ? imgUrl.split('base64,')[1] : imgUrl;
     params.image = base64;
-    params.mask = undefined;
+    if (!preserveMask) {
+      params.mask = undefined;
+    }
+
+    if (base64) {
+      try {
+        const img = new Image();
+        img.onload = () => {
+          const nw = img.naturalWidth || img.width;
+          const nh = img.naturalHeight || img.height;
+          if (nw > 0 && nh > 0) {
+            params.width = Math.max(64, Math.round(nw / 64) * 64);
+            params.height = Math.max(64, Math.round(nh / 64) * 64);
+          }
+        };
+        img.src = base64.startsWith('data:') ? base64 : `data:image/png;base64,${base64}`;
+      } catch (e) {}
+    }
   };
 
   const upscaleImage = async (options: {
