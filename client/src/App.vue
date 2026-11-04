@@ -17,7 +17,7 @@ import V5UsageModal from './components/V5UsageModal.vue';
 import ImageUpscaleModal from './components/ImageUpscaleModal.vue';
 import { parsePngMetadata, type ParsedImageMetadata } from './utils/pngMetadata';
 import { getReduceMobileEffectsSetting, setReduceMobileEffectsSetting } from './utils/mobilePerf';
-import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Palette, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud, Cloud, Wifi, Sparkles, ChevronDown, ChevronUp, RotateCcw, FileText, Plus, Minus, Users, User, UserPlus, Clock, Maximize2, HelpCircle, Zap, Smartphone } from 'lucide-vue-next';
+import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Palette, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud, Cloud, Wifi, Sparkles, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, RotateCcw, FileText, Plus, Minus, Users, User, UserPlus, Clock, Maximize2, HelpCircle, Zap, Smartphone } from 'lucide-vue-next';
 
 const authStore = useAuthStore();
 const genStore = useGenerationStore();
@@ -291,6 +291,55 @@ const filteredPromptHistory = computed(() => {
     if (!a.isFavorite && b.isFavorite) return 1;
     return b.timestamp - a.timestamp;
   });
+});
+
+// 提示词库分页控制
+const promptPage = ref(1);
+const promptPageSize = ref(12);
+const promptScrollContainerRef = ref<HTMLElement | null>(null);
+
+const promptTotalPages = computed(() => Math.max(1, Math.ceil(filteredPromptHistory.value.length / promptPageSize.value)));
+
+const paginatedPromptHistory = computed(() => {
+  const start = (promptPage.value - 1) * promptPageSize.value;
+  return filteredPromptHistory.value.slice(start, start + promptPageSize.value);
+});
+
+const promptVisiblePages = computed(() => {
+  const total = promptTotalPages.value;
+  const current = promptPage.value;
+  if (total <= 6) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+  const pages: (number | string)[] = [];
+  pages.push(1);
+  if (current > 3) pages.push('...');
+  const start = Math.max(2, current - 1);
+  const end = Math.min(total - 1, current + 1);
+  for (let i = start; i <= end; i++) {
+    pages.push(i);
+  }
+  if (current < total - 2) pages.push('...');
+  pages.push(total);
+  return pages;
+});
+
+const goToPromptPage = (p: number) => {
+  const target = Math.max(1, Math.min(p, promptTotalPages.value));
+  promptPage.value = target;
+  if (promptScrollContainerRef.value) {
+    promptScrollContainerRef.value.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+};
+
+watch([promptSearchQuery, promptGroupFilter, promptDateFilter], () => {
+  promptPage.value = 1;
+});
+
+watch(promptTotalPages, (max) => {
+  if (promptPage.value > max) {
+    promptPage.value = max;
+  }
 });
 
 const copiedPromptId = ref<string | null>(null);
@@ -2659,14 +2708,14 @@ watch(
             </button>
           </div>
           
-          <div class="flex-1 overflow-y-auto p-3 sm:p-4 custom-scrollbar">
+          <div ref="promptScrollContainerRef" class="flex-1 overflow-y-auto p-3 sm:p-4 custom-scrollbar">
             <div v-if="filteredPromptHistory.length === 0" class="text-center py-16 sm:py-20 text-gray-400 dark:text-gray-600 text-sm flex flex-col items-center">
               <Search class="w-10 h-10 opacity-20 mb-3" />
               未找到匹配的提示词
             </div>
             <div v-else class="flex flex-col gap-3">
               <div 
-                v-for="item in filteredPromptHistory" 
+                v-for="item in paginatedPromptHistory" 
                 :key="item.id" 
                 class="p-3 sm:p-4 bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700 rounded-xl hover:shadow-md hover:border-blue-300 dark:hover:border-blue-700 transition group flex flex-col gap-2 relative"
               >
@@ -2751,6 +2800,49 @@ watch(
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+
+          <!-- 分页控制栏 (仅在总条数大于0时展示) -->
+          <div v-if="filteredPromptHistory.length > 0" class="px-4 py-2.5 border-t border-gray-200 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-950/60 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
+            <div class="text-xs text-gray-500 dark:text-gray-400">
+              显示第 <span class="font-bold text-gray-800 dark:text-gray-200">{{ (promptPage - 1) * promptPageSize + 1 }}</span> - <span class="font-bold text-gray-800 dark:text-gray-200">{{ Math.min(promptPage * promptPageSize, filteredPromptHistory.length) }}</span> 条 / 共 <span class="font-bold text-blue-600 dark:text-blue-400">{{ filteredPromptHistory.length }}</span> 条
+            </div>
+
+            <div class="flex items-center gap-1.5 ml-auto">
+              <button 
+                @click="goToPromptPage(promptPage - 1)" 
+                :disabled="promptPage === 1"
+                class="px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-1"
+                title="上一页"
+              >
+                <ChevronLeft class="w-3.5 h-3.5" />
+                <span class="hidden sm:inline">上一页</span>
+              </button>
+
+              <div class="flex items-center gap-1">
+                <template v-for="(p, pIdx) in promptVisiblePages" :key="pIdx">
+                  <button 
+                    v-if="typeof p === 'number'"
+                    @click="goToPromptPage(p)"
+                    class="min-w-[28px] h-7 px-1.5 text-xs font-medium rounded-lg transition"
+                    :class="promptPage === p ? 'bg-blue-600 text-white font-bold shadow-xs' : 'bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
+                  >
+                    {{ p }}
+                  </button>
+                  <span v-else class="px-1 text-xs text-gray-400 select-none">...</span>
+                </template>
+              </div>
+
+              <button 
+                @click="goToPromptPage(promptPage + 1)" 
+                :disabled="promptPage === promptTotalPages"
+                class="px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-1"
+                title="下一页"
+              >
+                <span class="hidden sm:inline">下一页</span>
+                <ChevronRight class="w-3.5 h-3.5" />
+              </button>
             </div>
           </div>
         </div>

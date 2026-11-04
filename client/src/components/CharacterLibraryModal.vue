@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useGenerationStore } from '../stores/generation';
 import { useWebDAVStore } from '../stores/webdav';
-import { X, Search, Plus, Trash2, Copy, Check, UserPlus, Users, Star, ArrowUpToLine, ArrowDownToLine } from 'lucide-vue-next';
+import { X, Search, Plus, Trash2, Copy, Check, UserPlus, Users, Star, ArrowUpToLine, ArrowDownToLine, ChevronLeft, ChevronRight } from 'lucide-vue-next';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -24,6 +24,11 @@ const searchQuery = ref<string>('');
 const copiedId = ref<string | null>(null);
 const appliedAction = ref<{ id: string; action: 'prepend' | 'append' | 'char' } | null>(null);
 
+// 分页控制
+const pageSize = ref<number>(12);
+const currentPage = ref<number>(1);
+const scrollContainerRef = ref<HTMLElement | null>(null);
+
 // 新增/编辑弹窗状态
 const showEditModal = ref(false);
 const editingPreset = ref<Partial<CharacterPreset>>({
@@ -33,9 +38,13 @@ const editingPreset = ref<Partial<CharacterPreset>>({
   uc: ''
 });
 
-// 所有角色列表（内置 + 自定义）
+// 所有角色列表（内置 + 自定义，内置预设的自定义覆盖如收藏状态优先合并）
 const allPresets = computed(() => {
-  return [...BUILTIN_PRESETS, ...(genStore.customCharacters || [])];
+  const custom = genStore.customCharacters || [];
+  const customMap = new Map(custom.map(c => [c.id, c]));
+  const builtins = BUILTIN_PRESETS.map(b => customMap.get(b.id) || b);
+  const pureCustom = custom.filter(c => !BUILTIN_PRESETS.some(b => b.id === c.id));
+  return [...pureCustom, ...builtins];
 });
 
 // 分类列表
@@ -69,6 +78,50 @@ const filteredPresets = computed(() => {
     if (activeCategory.value === 'favorites') return p.isFavorite;
     return p.category === activeCategory.value;
   });
+});
+
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredPresets.value.length / pageSize.value)));
+
+const paginatedPresets = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value;
+  return filteredPresets.value.slice(start, start + pageSize.value);
+});
+
+const visiblePages = computed(() => {
+  const total = totalPages.value;
+  const current = currentPage.value;
+  if (total <= 6) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+  const pages: (number | string)[] = [];
+  pages.push(1);
+  if (current > 3) pages.push('...');
+  const start = Math.max(2, current - 1);
+  const end = Math.min(total - 1, current + 1);
+  for (let i = start; i <= end; i++) {
+    pages.push(i);
+  }
+  if (current < total - 2) pages.push('...');
+  pages.push(total);
+  return pages;
+});
+
+const goToPage = (p: number) => {
+  const target = Math.max(1, Math.min(p, totalPages.value));
+  currentPage.value = target;
+  if (scrollContainerRef.value) {
+    scrollContainerRef.value.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+};
+
+watch([searchQuery, activeCategory], () => {
+  currentPage.value = 1;
+});
+
+watch(totalPages, (max) => {
+  if (currentPage.value > max) {
+    currentPage.value = max;
+  }
 });
 
 // 收藏切换
@@ -292,10 +345,10 @@ const openAddModal = () => {
       </div>
 
       <!-- 角色卡片网格列表 -->
-      <div class="p-5 flex-1 overflow-y-auto custom-scrollbar">
+      <div ref="scrollContainerRef" class="p-5 flex-1 overflow-y-auto custom-scrollbar">
         <div v-if="filteredPresets.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
           <div 
-            v-for="preset in filteredPresets" 
+            v-for="preset in paginatedPresets" 
             :key="preset.id"
             class="bg-gray-50/70 dark:bg-gray-950/60 border border-gray-200/80 dark:border-gray-800/90 hover:border-blue-300 dark:hover:border-blue-700/60 rounded-2xl p-4 flex flex-col justify-between gap-3 shadow-xs hover:shadow-md transition-all group"
           >
@@ -397,6 +450,50 @@ const openAddModal = () => {
           >
             <Plus class="w-3.5 h-3.5" />
             新建自定义角色预设
+          </button>
+        </div>
+      </div>
+
+      <!-- 分页控制栏 (仅在总条数大于0时展示) -->
+      <div v-if="filteredPresets.length > 0" class="px-5 py-3 border-t border-gray-200 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-950/60 flex flex-wrap items-center justify-between gap-3 shrink-0">
+        <div class="text-xs text-gray-500 dark:text-gray-400">
+          显示第 <span class="font-bold text-gray-800 dark:text-gray-200">{{ (currentPage - 1) * pageSize + 1 }}</span> - <span class="font-bold text-gray-800 dark:text-gray-200">{{ Math.min(currentPage * pageSize, filteredPresets.length) }}</span> 条 / 共 <span class="font-bold text-blue-600 dark:text-blue-400">{{ filteredPresets.length }}</span> 个角色
+        </div>
+
+        <div class="flex items-center gap-1.5 ml-auto">
+          <button 
+            @click="goToPage(currentPage - 1)" 
+            :disabled="currentPage === 1"
+            class="px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-1"
+            title="上一页"
+          >
+            <ChevronLeft class="w-3.5 h-3.5" />
+            <span class="hidden sm:inline">上一页</span>
+          </button>
+
+          <!-- 页码显示与跳转 -->
+          <div class="flex items-center gap-1">
+            <template v-for="(p, pIdx) in visiblePages" :key="pIdx">
+              <button 
+                v-if="typeof p === 'number'"
+                @click="goToPage(p)"
+                class="min-w-[28px] h-7 px-1.5 text-xs font-medium rounded-lg transition"
+                :class="currentPage === p ? 'bg-blue-600 text-white font-bold shadow-xs' : 'bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
+              >
+                {{ p }}
+              </button>
+              <span v-else class="px-1 text-xs text-gray-400 select-none">...</span>
+            </template>
+          </div>
+
+          <button 
+            @click="goToPage(currentPage + 1)" 
+            :disabled="currentPage === totalPages"
+            class="px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-1"
+            title="下一页"
+          >
+            <span class="hidden sm:inline">下一页</span>
+            <ChevronRight class="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
