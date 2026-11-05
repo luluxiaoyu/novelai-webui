@@ -66,16 +66,32 @@ html.is-fnos-mobile-app .bg-black\/85 {
   background-color: rgba(0, 0, 0, 0.82) !important;
 }
 
-html.is-fnos-mobile-app .bg-white\/90,
-html.is-fnos-mobile-app .bg-white\/95 {
+/* 仅在亮色模式下将半透明浮层背景加固为纯白，严防在暗黑模式下误伤 */
+html.is-fnos-mobile-app:not(.dark) .bg-white\/90,
+html.is-fnos-mobile-app:not(.dark) .bg-white\/95 {
   background-color: #ffffff !important;
 }
 
+/* 暗色模式下加固为纯正暗黑背景，同时兼容 Tailwind dark: 编译生成的转义类名与标准类名 */
+html.is-fnos-mobile-app.dark .dark\:bg-gray-900\/90,
+html.is-fnos-mobile-app.dark .dark\:bg-gray-900\/95,
 html.is-fnos-mobile-app.dark .bg-gray-900\/90,
-html.is-fnos-mobile-app.dark .bg-gray-900\/95,
+html.is-fnos-mobile-app.dark .bg-gray-900\/95 {
+  background-color: #111827 !important;
+}
+
+html.is-fnos-mobile-app.dark .dark\:bg-gray-950\/90,
+html.is-fnos-mobile-app.dark .dark\:bg-gray-950\/95,
 html.is-fnos-mobile-app.dark .bg-gray-950\/90,
 html.is-fnos-mobile-app.dark .bg-gray-950\/95 {
-  background-color: #111827 !important;
+  background-color: #030712 !important;
+}
+
+html.is-fnos-mobile-app.dark .dark\:bg-gray-800\/90,
+html.is-fnos-mobile-app.dark .dark\:bg-gray-800\/95,
+html.is-fnos-mobile-app.dark .bg-gray-800\/90,
+html.is-fnos-mobile-app.dark .bg-gray-800\/95 {
+  background-color: #1f2937 !important;
 }
 
 /* 弹窗及容器动画改为纯 GPU 硬件合成透明度淡入，移除在安卓 WebView 中引发子树重绘的 scale 缩放 */
