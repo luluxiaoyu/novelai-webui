@@ -81,6 +81,10 @@ const historyFilter = ref('today');
 const promptDateFilter = ref('all');
 const promptGroupFilter = ref('all');
 const promptSearchQuery = ref('');
+const expandedNegativeMap = ref<Record<string, boolean>>({});
+const toggleNegativeExpand = (id: string) => {
+  expandedNegativeMap.value[id] = !expandedNegativeMap.value[id];
+};
 const paramsCopied = ref(false);
 const imageCopied = ref(false);
 
@@ -2744,9 +2748,24 @@ watch(
                 <!-- 提示词与负面提示词主体 -->
                 <div class="py-0.5">
                   <p class="text-xs sm:text-sm text-gray-800 dark:text-gray-200 mb-1.5 font-medium leading-relaxed break-all select-text">{{ item.prompt }}</p>
-                  <p v-if="item.negative_prompt" class="text-[11px] sm:text-xs text-red-500/80 dark:text-red-400/80 leading-relaxed break-all select-text" :title="item.negative_prompt">
-                    <span class="font-semibold text-red-600/90 dark:text-red-400/90">Negative:</span> {{ item.negative_prompt }}
-                  </p>
+                  <div v-if="item.negative_prompt" class="flex items-start gap-1.5 text-[11px] sm:text-xs text-red-500/80 dark:text-red-400/80 leading-relaxed">
+                    <p 
+                      class="min-w-0 select-text" 
+                      :class="expandedNegativeMap[item.id] ? 'break-all flex-1' : 'truncate flex-1'" 
+                      :title="item.negative_prompt"
+                    >
+                      <span class="font-semibold text-red-600/90 dark:text-red-400/90">Negative:</span> {{ item.negative_prompt }}
+                    </p>
+                    <button 
+                      type="button"
+                      @click.stop="toggleNegativeExpand(item.id)"
+                      class="p-0.5 mt-0.5 text-red-400/90 hover:text-red-600 dark:text-red-400/70 dark:hover:text-red-300 rounded hover:bg-red-50 dark:hover:bg-red-950/40 transition shrink-0 cursor-pointer"
+                      :title="expandedNegativeMap[item.id] ? '折叠反向提示词' : '展开反向提示词'"
+                    >
+                      <ChevronUp v-if="expandedNegativeMap[item.id]" class="w-3.5 h-3.5" />
+                      <ChevronDown v-else class="w-3.5 h-3.5" />
+                    </button>
+                  </div>
 
                   <!-- 角色专属设定 (V4/V4.5/V5 多角色) -->
                   <div v-if="item.characters && item.characters.length > 0" class="mt-2 flex flex-wrap gap-1.5 items-center">
