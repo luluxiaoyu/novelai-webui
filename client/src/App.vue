@@ -3,7 +3,7 @@ import { useAuthStore } from './stores/auth';
 import { useGenerationStore, isImageUpscaled } from './stores/generation';
 import { useWebDAVStore } from './stores/webdav';
 import { saveAs } from 'file-saver';
-import { computed, ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
 import { useDark, useToggle } from '@vueuse/core';
 import JSZip from 'jszip';
 import CustomSelect from './components/CustomSelect.vue';
@@ -15,6 +15,7 @@ import ImageGalleryModal from './components/ImageGalleryModal.vue';
 import StorageMigrationModal from './components/StorageMigrationModal.vue';
 import V5UsageModal from './components/V5UsageModal.vue';
 import ImageUpscaleModal from './components/ImageUpscaleModal.vue';
+import { prepareBaseImage, type BaseImage } from './utils/baseImage';
 import { parsePngMetadata, type ParsedImageMetadata } from './utils/pngMetadata';
 import { getReduceMobileEffectsSetting, setReduceMobileEffectsSetting } from './utils/mobilePerf';
 import { Sun, Moon, LogOut, Download, Copy, Loader2, Image as ImageIcon, X, KeyRound, History, Trash2, RefreshCw, SlidersHorizontal, Layers, Paintbrush, Palette, Star, Check, Lock, Search, Folder, FolderHeart, FolderOpen, Database, DownloadCloud, UploadCloud, Cloud, Wifi, Sparkles, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, RotateCcw, FileText, Plus, Minus, Users, User, UserPlus, Clock, Maximize2, HelpCircle, Zap, Smartphone } from 'lucide-vue-next';
@@ -466,7 +467,7 @@ const costInfo = computed(() => {
     genStore.params.sm,
     genStore.params.sm_dyn,
     genStore.params.model,
-    (genStore.params.image && genStore.params.strength !== undefined) ? genStore.params.strength : undefined
+    genStore.params.image ? (genStore.imageMode === 'inpaint' ? genStore.inpaintStrength : genStore.params.strength) : undefined
   ) * genStore.batchCount;
   
   const estimatedText = `消耗 ${anlasCost} Anlas`;
@@ -673,15 +674,8 @@ const handleDeleteHistory = (id: string) => {
 
 const isDraggingOver = ref(false);
 const showDropActionModal = ref(false);
-const droppedImageInfo = ref<{
-  file: File;
-  dataUrl: string;
-  processedDataUrl: string;
-  processedBase64: string;
-  targetWidth: number;
-  targetHeight: number;
-  metadata: ParsedImageMetadata;
-} | null>(null);
+const droppedImageInfo = ref<{ file: File; image: BaseImage; metadata: ParsedImageMetadata } | null>(null);
+let imageImportRequest = 0;
 
 let dragTimer: any = null;
 
@@ -719,49 +713,18 @@ const onWindowDrop = async (e: DragEvent) => {
 };
 
 const handleDroppedFile = async (file: File) => {
+  const request = ++imageImportRequest;
   try {
-    const arrayBuffer = await file.arrayBuffer();
-    const metadata = await parsePngMetadata(arrayBuffer);
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      const rawDataUrl = reader.result as string;
-      const img = new Image();
-      img.onload = () => {
-        // NovelAI 强制要求分辨率是 64 的整数倍，同时填充白底去除 Alpha 透明通道防止 VAE 绿屏
-        const targetWidth = Math.max(64, Math.round(img.width / 64) * 64);
-        const targetHeight = Math.max(64, Math.round(img.height / 64) * 64);
-
-        const resizeCanvas = document.createElement('canvas');
-        resizeCanvas.width = targetWidth;
-        resizeCanvas.height = targetHeight;
-        const rctx = resizeCanvas.getContext('2d');
-        let processedDataUrl = rawDataUrl;
-        if (rctx) {
-          rctx.fillStyle = 'white';
-          rctx.fillRect(0, 0, targetWidth, targetHeight);
-          rctx.drawImage(img, 0, 0, targetWidth, targetHeight);
-          processedDataUrl = resizeCanvas.toDataURL('image/png');
-        }
-
-        const processedBase64 = processedDataUrl.split(',')[1];
-
-        droppedImageInfo.value = {
-          file,
-          dataUrl: rawDataUrl,
-          processedDataUrl,
-          processedBase64,
-          targetWidth,
-          targetHeight,
-          metadata
-        };
-        showDropActionModal.value = true;
-      };
-      img.src = rawDataUrl;
-    };
-    reader.readAsDataURL(file);
-  } catch (err) {
-    console.error('Failed to process dropped image:', err);
+    const image = await prepareBaseImage(file);
+    if (request !== imageImportRequest) return;
+    const metadata = await parsePngMetadata(await file.arrayBuffer());
+    if (request !== imageImportRequest) return;
+    droppedImageInfo.value = { file, image, metadata };
+    showDropActionModal.value = true;
+  } catch (error) {
+    if (request === imageImportRequest) {
+      alert(error instanceof Error ? error.message : '处理底图失败');
+    }
   }
 };
 
@@ -850,8 +813,8 @@ const handleImportSelectedMetadata = () => {
 
   // 4. Settings
   if (importMetaOptions.value.settings) {
-    if (metadata.width) genStore.params.width = metadata.width;
-    if (metadata.height) genStore.params.height = metadata.height;
+    if (!genStore.params.image && metadata.width) genStore.params.width = metadata.width;
+    if (!genStore.params.image && metadata.height) genStore.params.height = metadata.height;
     if (metadata.steps) genStore.params.steps = metadata.steps;
     if (metadata.scale) genStore.params.scale = metadata.scale;
     if (metadata.sampler) genStore.params.sampler = metadata.sampler;
@@ -873,43 +836,24 @@ const handleImportSelectedMetadata = () => {
 
 const applyDropAction = async (action: 'inpaint' | 'img2img' | 'metadata') => {
   if (!droppedImageInfo.value) return;
-
-  const { processedDataUrl, processedBase64, targetWidth, targetHeight } = droppedImageInfo.value;
-
-  if (action === 'inpaint') {
-    genStore.params.image = processedBase64;
-    genStore.params.mask = undefined;
-    genStore.params.width = targetWidth;
-    genStore.params.height = targetHeight;
-    genStore.currentImage = {
-      id: 'uploaded-' + Date.now(),
-      url: processedDataUrl,
-      params: JSON.parse(JSON.stringify(genStore.params)),
-      timestamp: Date.now()
-    };
-    showMaskEditor.value = true;
-    mobileTab.value = 'canvas';
-    showDropActionModal.value = false;
-    droppedImageInfo.value = null;
-    await nextTick();
-    initCanvas();
-  } else if (action === 'img2img') {
-    genStore.params.image = processedBase64;
-    genStore.params.mask = undefined;
-    genStore.params.width = targetWidth;
-    genStore.params.height = targetHeight;
-    genStore.currentImage = {
-      id: 'uploaded-' + Date.now(),
-      url: processedDataUrl,
-      params: JSON.parse(JSON.stringify(genStore.params)),
-      timestamp: Date.now()
-    };
-    showMaskEditor.value = false;
-    showDropActionModal.value = false;
-    droppedImageInfo.value = null;
-  } else if (action === 'metadata') {
+  if (action === 'metadata') {
     handleImportSelectedMetadata();
+    return;
   }
+
+  const { image } = droppedImageInfo.value;
+  genStore.setBaseImage(image, action);
+  const timestamp = Date.now();
+  genStore.currentImage = {
+    id: 'uploaded-' + timestamp,
+    url: image.dataUrl,
+    params: { ...genStore.params, image: undefined, mask: undefined },
+    timestamp
+  };
+  showDropActionModal.value = false;
+  droppedImageInfo.value = null;
+  showMaskEditor.value = false;
+  if (action === 'inpaint') await openInpaintEditor(image.dataUrl);
 };
 
 const handleImageUpload = (e: Event) => {
@@ -929,37 +873,42 @@ const inpaintImageSrc = computed(() => {
   return `data:image/png;base64,${img}`;
 });
 
-const inpaintImgRef = ref<HTMLImageElement | null>(null);
-
-const isCurrentImageInpaint = computed(() => {
-  if (!genStore.params.image || !genStore.currentImage?.url) return false;
-  const curUrl = genStore.currentImage.url;
-  if (curUrl.includes('base64,')) {
-    return curUrl.split('base64,')[1] === genStore.params.image;
-  }
-  return curUrl === genStore.params.image || inpaintImageSrc.value === curUrl;
+const imageModeOptions = [
+  { value: 'img2img', label: '图生图' },
+  { value: 'inpaint', label: '局部重绘' }
+] as const;
+const supportsInpaintStrength = computed(() => /-4|-5|v4|v5/.test(genStore.params.model));
+const isCurrentBaseImage = computed(() => !!inpaintImageSrc.value && genStore.currentImage?.url === inpaintImageSrc.value);
+const needsInpaintMask = computed(() => Boolean(genStore.params.image && genStore.imageMode === 'inpaint' && !genStore.params.mask));
+const generationLabel = computed(() => {
+  if (!genStore.params.image) return '立即生成图像';
+  if (genStore.imageMode === 'img2img') return '生成图生图';
+  return '生成局部重绘';
 });
 
-const openInpaintEditor = async (url?: string, preserveMask = false) => {
-  const targetUrl = url || genStore.currentImage?.url || genStore.params.image;
-  if (!targetUrl) return;
+watch(() => genStore.imageMode, mode => {
+  if (mode === 'img2img') showMaskEditor.value = false;
+});
 
-  const isCurrent = Boolean(genStore.params.image && (
-    targetUrl === genStore.params.image ||
-    (inpaintImageSrc.value && targetUrl === inpaintImageSrc.value)
-  ));
+const maskCanvasReady = ref(false);
+let isOpeningMaskEditor = false;
+const openInpaintEditor = async (url?: string) => {
+  const targetUrl = url || genStore.currentImage?.url;
+  if (!targetUrl || isOpeningMaskEditor) return;
 
-  const shouldPreserve = Boolean(preserveMask || (isCurrent && genStore.params.mask));
-
-  if (!isCurrent || !genStore.params.image) {
-    genStore.sendToInpaint(targetUrl, shouldPreserve);
+  isOpeningMaskEditor = true;
+  try {
+    if (targetUrl !== inpaintImageSrc.value) await genStore.sendToInpaint(targetUrl);
+    genStore.imageMode = 'inpaint';
+    maskCanvasReady.value = false;
+    showMaskEditor.value = true;
+    mobileTab.value = 'canvas';
+    resetZoom();
+  } catch (error) {
+    alert(error instanceof Error ? error.message : '无法打开重绘底图');
+  } finally {
+    isOpeningMaskEditor = false;
   }
-
-  showMaskEditor.value = true;
-  mobileTab.value = 'canvas';
-  resetZoom();
-  await nextTick();
-  initCanvas();
 };
 
 const applyDimensionsAndMask = (w: number, h: number) => {
@@ -972,39 +921,29 @@ const applyDimensionsAndMask = (w: number, h: number) => {
     canvas.width = w;
     canvas.height = h;
   }
-  genStore.params.width = Math.max(64, Math.round(w / 64) * 64);
-  genStore.params.height = Math.max(64, Math.round(h / 64) * 64);
-
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  if (genStore.params.mask) {
-    const maskImg = new Image();
-    maskImg.onload = () => {
-      ctx.drawImage(maskImg, 0, 0, canvas.width, canvas.height);
-    };
-    const rawMask = genStore.params.mask;
-    maskImg.src = rawMask.startsWith('data:') ? rawMask : `data:image/png;base64,${rawMask}`;
+  const rawMask = genStore.params.mask;
+  if (!rawMask) {
+    maskCanvasReady.value = true;
+    return;
   }
-};
 
-const initCanvas = () => {
-  if (!canvasRef.value || !inpaintImageSrc.value) return;
-
-  const inpaintImg = inpaintImgRef.value;
-  if (inpaintImg && inpaintImg.complete && inpaintImg.naturalWidth > 0) {
-    applyDimensionsAndMask(inpaintImg.naturalWidth, inpaintImg.naturalHeight);
-  } else {
-    const img = new Image();
-    img.onload = () => {
-      applyDimensionsAndMask(img.naturalWidth || img.width, img.naturalHeight || img.height);
-    };
-    img.src = inpaintImageSrc.value;
-  }
+  const maskImg = new Image();
+  maskImg.onload = () => {
+    if (canvasRef.value !== canvas) return;
+    ctx.drawImage(maskImg, 0, 0, canvas.width, canvas.height);
+    maskCanvasReady.value = true;
+  };
+  maskImg.onerror = () => {
+    if (canvasRef.value === canvas) maskCanvasReady.value = true;
+  };
+  maskImg.src = rawMask.startsWith('data:') ? rawMask : `data:image/png;base64,${rawMask}`;
 };
 
 const handleInpaintImgLoaded = (e: Event) => {
   const img = e.target as HTMLImageElement;
-  if (!img) return;
+  if (!img || maskCanvasReady.value) return;
   const w = img.naturalWidth || img.width;
   const h = img.naturalHeight || img.height;
   if (w > 0 && h > 0) {
@@ -1015,6 +954,7 @@ const handleInpaintImgLoaded = (e: Event) => {
 let lastDrawPos: { x: number; y: number } | null = null;
 
 const startDraw = (e: MouseEvent | TouchEvent) => {
+  if (!maskCanvasReady.value) return;
   isDrawing.value = true;
   lastDrawPos = null;
   draw(e);
@@ -1023,7 +963,6 @@ const startDraw = (e: MouseEvent | TouchEvent) => {
 const stopDraw = () => {
   isDrawing.value = false;
   lastDrawPos = null;
-  exportMask();
 };
 
 const draw = (e: MouseEvent | TouchEvent) => {
@@ -1101,7 +1040,6 @@ const exportMask = () => {
       }
 
       if (!hasAnyPainted) {
-        genStore.params.mask = undefined;
         return;
       }
 
@@ -1155,15 +1093,25 @@ const exportMask = () => {
     }
 
     const maskDataUrl = maskCanvas.toDataURL('image/png');
-    genStore.params.mask = maskDataUrl.split(',')[1];
+    return maskDataUrl.split(',')[1];
   }
+};
+
+const saveMask = () => {
+  const mask = exportMask();
+  if (!mask) {
+    alert('请先涂抹要重绘的区域');
+    return;
+  }
+  genStore.params.mask = mask;
+  showMaskEditor.value = false;
+  mobileTab.value = 'controls';
 };
 
 const resetMask = () => {
   if (canvasRef.value) {
     const ctx = canvasRef.value.getContext('2d');
     ctx?.clearRect(0, 0, canvasRef.value.width, canvasRef.value.height);
-    genStore.params.mask = undefined;
   }
 };
 
@@ -1171,6 +1119,7 @@ const resetMask = () => {
 const clearInpaint = () => {
   genStore.params.image = undefined;
   genStore.params.mask = undefined;
+  genStore.imageMode = 'img2img';
   showMaskEditor.value = false;
 };
 
@@ -1896,7 +1845,7 @@ watch(
             <div class="flex gap-2">
             <button 
               @click="genStore.generate(); mobileTab = 'canvas'"
-              :disabled="genStore.isGenerating || costInfo.blockedByPermission || (!costInfo.isFree && costInfo.anlas > 50 && !confirmHighCost)"
+              :disabled="genStore.isGenerating || showMaskEditor || needsInpaintMask || costInfo.blockedByPermission || (!costInfo.isFree && costInfo.anlas > 50 && !confirmHighCost)"
               class="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-gray-800 disabled:text-gray-500 text-white font-medium py-3 rounded-xl shadow-md shadow-blue-600/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2 text-sm"
             >
               <template v-if="genStore.isGenerating">
@@ -1911,13 +1860,17 @@ watch(
                   <span>{{ genStore.batchTotal > 1 ? `正在生成 (${genStore.batchCurrent}/${genStore.batchTotal})...` : '正在生成中...' }}</span>
                 </template>
               </template>
+              <template v-else-if="needsInpaintMask">
+                <Paintbrush class="w-4 h-4" />
+                <span>先绘制重绘区域</span>
+              </template>
               <template v-else-if="costInfo.blockedByPermission">
                 <Lock class="w-4 h-4 text-amber-500" />
                 <span>访问密钥受限 (禁止付费参数)</span>
               </template>
               <template v-else>
                 <Sparkles class="w-4 h-4" />
-                <span>{{ !costInfo.isFree && costInfo.anlas > 50 && !confirmHighCost ? '请先勾选确认高点数消耗' : '立即生成图像' }}</span>
+                <span>{{ !costInfo.isFree && costInfo.anlas > 50 && !confirmHighCost ? '请先勾选确认高点数消耗' : generationLabel }}</span>
               </template>
             </button>
             <div class="w-20 shrink-0 h-full self-stretch flex">
@@ -1989,11 +1942,12 @@ watch(
               <span v-if="costInfo.isFree" class="text-[10px] bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-1.5 py-0.5 rounded border border-green-200 dark:border-green-800 transition-colors">免费区间</span>
             </div>
             <div class="flex gap-2">
-              <input type="number" v-model.number="genStore.params.width" class="w-1/2 bg-gray-50 dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-lg p-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-500 text-center transition-colors" placeholder="宽" />
+              <input type="number" v-model.number="genStore.params.width" :disabled="Boolean(genStore.params.image)" class="w-1/2 bg-gray-50 dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-lg p-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-500 text-center transition-colors" placeholder="宽" />
               <span class="text-gray-400 dark:text-gray-500 self-center text-xs">×</span>
-              <input type="number" v-model.number="genStore.params.height" class="w-1/2 bg-gray-50 dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-lg p-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-500 text-center transition-colors" placeholder="高" />
+              <input type="number" v-model.number="genStore.params.height" :disabled="Boolean(genStore.params.image)" class="w-1/2 bg-gray-50 dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-lg p-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-500 text-center transition-colors" placeholder="高" />
             </div>
-            <div class="flex gap-2 mt-1.5">
+            <p v-if="genStore.params.image" class="mt-1 text-xs text-gray-500">图生图和局部重绘使用底图尺寸</p>
+            <div v-else class="flex gap-2 mt-1.5">
               <button @click="genStore.params.width = 832; genStore.params.height = 1216;" class="flex-1 text-[11px] bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 rounded py-1 border border-gray-200 dark:border-gray-700 transition-colors">竖屏</button>
               <button @click="genStore.params.width = 1024; genStore.params.height = 1024;" class="flex-1 text-[11px] bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 rounded py-1 border border-gray-200 dark:border-gray-700 transition-colors">方图</button>
               <button @click="genStore.params.width = 1216; genStore.params.height = 832;" class="flex-1 text-[11px] bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 rounded py-1 border border-gray-200 dark:border-gray-700 transition-colors">横屏</button>
@@ -2188,7 +2142,7 @@ watch(
         <!-- 局部重绘 (Inpaint / Img2img) 区域 -->
         <div class="flex flex-col gap-2 pt-4 border-t border-gray-200 dark:border-gray-800 transition-colors">
           <div class="flex justify-between items-center">
-            <label class="block text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">局部重绘 / 图生图</label>
+            <label class="block text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">底图生成</label>
           </div>
           
           <div class="flex flex-col gap-2 text-xs">
@@ -2197,31 +2151,44 @@ watch(
               <input type="file" accept="image/*" @change="handleImageUpload" class="text-xs file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-xs file:bg-gray-100 dark:file:bg-gray-800 file:text-gray-700 dark:file:text-gray-200 cursor-pointer w-full" />
             </div>
 
-            <!-- 涂鸦面板将显示在中央大画布上 -->
-            <!-- 涂鸦面板将显示在中央大画布上 -->
-            <div v-if="genStore.params.image" class="p-2 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-xl flex flex-col gap-2 mt-1 shadow-sm transition-colors">
-              <div class="flex justify-between items-center px-1">
-                <span class="font-medium text-gray-700 dark:text-gray-300">已加载底图</span>
-                <span class="text-[10px] text-gray-500">{{ genStore.params.width }} × {{ genStore.params.height }}</span>
+            <div v-if="genStore.params.image" class="flex flex-col gap-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 p-3">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <span class="font-medium">底图 · {{ genStore.params.width }} × {{ genStore.params.height }}</span>
+                <button type="button" @click="clearInpaint" class="text-red-500 hover:underline">移除底图</button>
               </div>
-              
-              <!-- 大缩略图与图层叠加 -->
-              <div class="relative w-full h-32 rounded-lg overflow-hidden border border-gray-300 dark:border-gray-700 bg-black/10 flex items-center justify-center">
-                <img :src="inpaintImageSrc" class="absolute inset-0 w-full h-full object-contain" />
-                <img v-if="genStore.params.mask" :src="'data:image/png;base64,' + genStore.params.mask" class="absolute inset-0 w-full h-full object-contain mix-blend-screen opacity-50" />
+              <fieldset class="grid grid-cols-2 gap-2">
+                <legend class="sr-only">底图生成模式</legend>
+                <label v-for="choice in imageModeOptions" :key="choice.value" class="cursor-pointer text-center">
+                  <input v-model="genStore.imageMode" type="radio" :value="choice.value" name="image-mode" class="peer sr-only" />
+                  <span class="block rounded-lg border border-gray-300 dark:border-gray-700 px-2 py-2 font-medium peer-checked:border-blue-500 peer-checked:bg-blue-100 peer-checked:text-blue-800 dark:peer-checked:bg-blue-950 dark:peer-checked:text-blue-200 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500">{{ choice.label }}</span>
+                </label>
+              </fieldset>
+              <div class="relative w-full h-32 rounded-lg overflow-hidden border border-gray-300 dark:border-gray-700 bg-black/10">
+                <img :src="inpaintImageSrc" alt="生成底图" class="absolute inset-0 w-full h-full object-contain" />
+                <img v-if="genStore.imageMode === 'inpaint' && genStore.params.mask" :src="'data:image/png;base64,' + genStore.params.mask" alt="" class="absolute inset-0 w-full h-full object-contain mix-blend-screen opacity-50 pointer-events-none" />
               </div>
-
-              <button @click="openInpaintEditor(genStore.params.image, true)" class="w-full text-white font-medium bg-blue-600 hover:bg-blue-700 px-3 py-2 rounded-lg shadow-sm shadow-blue-500/20 transition text-center">
-                编辑涂鸦遮罩
-              </button>
-            </div>
-
-            <div v-if="genStore.params.image" class="flex flex-col gap-1 mt-1">
-              <div class="flex justify-between items-center">
-                <span class="text-xs font-medium">重绘幅度 (Strength): {{ genStore.params.strength }}</span>
-                <button @click="clearInpaint" class="text-xs text-red-500 hover:underline">清除底图</button>
-              </div>
-              <input type="range" v-model.number="genStore.params.strength" min="0.1" max="0.99" step="0.05" class="w-full accent-blue-600" />
+              <template v-if="genStore.imageMode === 'img2img'">
+                <label class="flex flex-col gap-1">
+                  <span class="font-medium">变化强度 (Strength) · {{ genStore.params.strength ?? 0.7 }}</span>
+                  <input type="range" v-model.number="genStore.params.strength" min="0.01" max="1" step="0.01" class="w-full accent-blue-600" />
+                  <span class="text-gray-500 dark:text-gray-400">越低越接近原图，越高越容易改变整张图。</span>
+                </label>
+                <label class="flex flex-col gap-1">
+                  <span class="font-medium">噪声 (Noise) · {{ genStore.params.noise ?? 0 }}</span>
+                  <input type="range" v-model.number="genStore.params.noise" min="0" max="1" step="0.01" class="w-full accent-blue-600" />
+                  <span class="text-gray-500 dark:text-gray-400">提高噪声可增加新细节，过高可能产生杂纹。</span>
+                </label>
+              </template>
+              <template v-else>
+                <button type="button" @click="openInpaintEditor(inpaintImageSrc)" class="w-full text-white font-medium bg-blue-600 hover:bg-blue-700 px-3 py-2 rounded-lg transition">
+                  {{ genStore.params.mask ? '编辑重绘区域' : '绘制重绘区域' }}
+                </button>
+                <p class="text-gray-500 dark:text-gray-400">{{ genStore.params.mask ? '仅重绘遮罩覆盖的区域。' : '请先涂抹并保存要重绘的区域。' }}</p>
+                <label v-if="supportsInpaintStrength" class="flex flex-col gap-1">
+                  <span class="font-medium">遮罩内变化强度 · {{ genStore.inpaintStrength }}</span>
+                  <input type="range" v-model.number="genStore.inpaintStrength" min="0.01" max="1" step="0.01" class="w-full accent-blue-600" />
+                </label>
+              </template>
             </div>
           </div>
         </div>
@@ -2272,7 +2239,6 @@ watch(
               <div class="relative shadow-2xl rounded-lg overflow-hidden border border-gray-300 dark:border-gray-700 shrink-0 select-none">
                 <!-- 底图 -->
                 <img 
-                  ref="inpaintImgRef"
                   :src="inpaintImageSrc" 
                   class="block max-w-[85vw] max-h-[85vh] w-auto h-auto pointer-events-none select-none" 
                   draggable="false"
@@ -2294,17 +2260,17 @@ watch(
             </div>
             
             <!-- 涂鸦悬浮工具栏 (移动端避免被底部导航遮挡，设置 bottom-24) -->
-            <div class="absolute bottom-24 sm:bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 sm:gap-4 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border border-gray-200 dark:border-gray-800 p-2.5 sm:p-3 rounded-2xl shadow-2xl z-30 max-w-[92vw] overflow-x-auto">
+            <div class="absolute bottom-24 sm:bottom-6 left-2 right-2 mx-auto w-fit flex flex-wrap justify-center items-center gap-2 sm:gap-4 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border border-gray-200 dark:border-gray-800 p-2.5 sm:p-3 rounded-2xl shadow-2xl z-30 max-w-full">
               <div class="flex items-center gap-2">
                 <span class="text-xs text-gray-500 whitespace-nowrap font-medium">画笔大小:</span>
                 <input type="range" v-model.number="brushSize" min="5" max="150" class="w-24 sm:w-32 accent-blue-600" />
                 <span class="font-mono text-xs w-6 text-gray-600 dark:text-gray-300">{{ brushSize }}</span>
               </div>
               <div class="w-px h-6 bg-gray-200 dark:bg-gray-700"></div>
-              <button @click="resetMask" class="text-xs text-gray-600 hover:text-red-500 font-medium transition whitespace-nowrap">重置</button>
+              <button @click="resetMask" :disabled="!maskCanvasReady" class="text-xs text-gray-600 hover:text-red-500 font-medium transition whitespace-nowrap">重置</button>
               <button @click="showMaskEditor = false; mobileTab = 'controls'" class="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 font-medium transition whitespace-nowrap">取消</button>
-              <button @click="exportMask(); showMaskEditor = false; mobileTab = 'controls'" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 sm:px-4 py-1.5 rounded-lg shadow-md shadow-blue-500/20 transition whitespace-nowrap">
-                保存涂鸦
+              <button @click="saveMask" :disabled="!maskCanvasReady" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 sm:px-4 py-1.5 rounded-lg shadow-md shadow-blue-500/20 transition whitespace-nowrap">
+                保存重绘区域
               </button>
             </div>
           </template>
@@ -2332,23 +2298,16 @@ watch(
               <img :src="genStore.currentImage.url" class="max-w-[85vw] max-h-[85vh] object-contain drop-shadow-2xl pointer-events-none rounded-lg" />
             </div>
 
-            <!-- 待重绘标识 Tag -->
-            <div 
-              v-if="isCurrentImageInpaint"
-              class="absolute top-24 right-4 sm:top-auto sm:bottom-4 sm:right-60 bg-blue-600/90 text-white text-xs px-3 py-1.5 rounded-full shadow-lg backdrop-blur-sm z-20 flex items-center gap-1.5 font-medium animate-fade-in"
-            >
-              <Paintbrush class="w-3.5 h-3.5" />
-              待重绘
-            </div>
-
-            <!-- 浮动操作栏 (移动端在右上角采用两行紧凑布局：第1行重绘与超分，第2行下载、复制与复用参数，彻底消除与左侧缩放条的水平重叠；PC端保留在右下角单行横排) -->
-            <div class="absolute top-4 right-4 sm:top-auto sm:bottom-4 sm:right-4 flex flex-col sm:flex-row items-end sm:items-center gap-1.5 sm:gap-2 z-30">
-              <!-- 第 1 组操作 (移动端第 1 行 / PC端并排左侧)：重绘、超分 -->
+            <!-- 底图状态与操作按钮共用布局，窄画布时换行 -->
+            <div class="absolute top-4 left-4 right-4 sm:top-auto sm:bottom-4 flex flex-wrap justify-end items-center gap-1.5 sm:gap-2 z-30 pointer-events-none [&>*]:pointer-events-auto">
+              <span v-if="isCurrentBaseImage" class="rounded-full bg-blue-600 text-white text-xs px-3 py-1.5 font-medium">
+                {{ genStore.imageMode === 'img2img' ? '图生图底图' : genStore.params.mask ? '已标记重绘区域' : '待绘制重绘区域' }}
+              </span>
               <div class="flex items-center gap-1.5 sm:gap-2">
                 <button 
                   @click="openInpaintEditor(genStore.currentImage?.url)" 
                   class="bg-white/95 hover:bg-blue-50 dark:bg-gray-900/95 dark:hover:bg-blue-900/50 text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 border border-gray-200 dark:border-gray-700 p-2 sm:p-2.5 rounded-xl shadow-lg transition backdrop-blur-md flex items-center justify-center active:scale-95" 
-                  title="发送到涂鸦重绘 (Inpaint)"
+                  title="局部重绘"
                 >
                   <Paintbrush class="w-4 h-4 sm:w-5 sm:h-5 text-blue-500" />
                 </button>
@@ -3033,15 +2992,15 @@ watch(
         <div class="p-5 flex flex-col gap-4 max-h-[80vh] overflow-y-auto custom-scrollbar">
           <div class="flex gap-4 p-3 bg-gray-50 dark:bg-gray-950/60 rounded-xl border border-gray-200/60 dark:border-gray-800">
             <div class="w-16 h-16 sm:w-20 sm:h-20 rounded-lg overflow-hidden bg-black/10 shrink-0 border border-gray-200 dark:border-gray-700 flex items-center justify-center">
-              <img :src="droppedImageInfo.dataUrl" class="w-full h-full object-contain" />
+              <img :src="droppedImageInfo.image.dataUrl" class="w-full h-full object-contain" />
             </div>
             <div class="flex-1 flex flex-col justify-center gap-1 text-xs">
               <span class="font-medium text-gray-900 dark:text-gray-100 truncate max-w-[280px]" :title="droppedImageInfo.file.name">
                 {{ droppedImageInfo.file.name }}
               </span>
-              <span class="text-gray-500 dark:text-gray-400">
-                分辨率: {{ droppedImageInfo.targetWidth }} × {{ droppedImageInfo.targetHeight }}
-              </span>
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                底图已适配为 {{ droppedImageInfo.image.width }} × {{ droppedImageInfo.image.height }}{{ droppedImageInfo.image.compacted ? '，并压缩以减小上传体积' : '' }}
+              </p>
               <div v-if="droppedImageInfo.metadata.hasMetadata" class="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 text-[11px] font-medium mt-0.5">
                 <Check class="w-3.5 h-3.5" />
                 <span>已识别到元数据</span>
@@ -3243,7 +3202,7 @@ watch(
                   <div class="font-semibold text-xs text-gray-900 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400">
                     🖼️ 载入为图生图
                   </div>
-                  <p class="text-[10px] text-gray-400 mt-0.5">作为底图进行垫图微调生成</p>
+                  <p class="text-[10px] text-gray-400 mt-0.5">参考底图重新生成整张图</p>
                 </div>
               </button>
             </div>

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, reactive, toRaw } from 'vue';
 import { encryptedAxios, encryptedFetchStream } from '../utils/api';
+import { prepareBaseImage, type BaseImage } from '../utils/baseImage';
 import JSZip from 'jszip';
 import { useAuthStore } from './auth';
 import { useWebDAVStore } from './webdav';
@@ -528,12 +529,7 @@ export const useGenerationStore = defineStore('generation', () => {
       const seedToUse = params.seed === -1 ? Math.floor(Math.random() * 4294967295) : params.seed;
       const isV4OrV5 = params.model.includes('-4') || params.model.includes('-5') || params.model.includes('v4') || params.model.includes('v5');
       const isV5 = params.model.includes('diffusion-5') || params.model.includes('v5');
-      let action: 'generate' | 'img2img' | 'infill' = 'generate';
-      if (params.mask && params.image) {
-        action = 'infill';
-      } else if (params.image) {
-        action = 'img2img';
-      }
+      const action = params.image ? (imageMode.value === 'inpaint' ? 'infill' : 'img2img') : 'generate';
 
       let modelToUse = params.model;
       if (action === 'infill') {
@@ -558,12 +554,12 @@ export const useGenerationStore = defineStore('generation', () => {
       };
 
       if (params.image) {
-        parameters.image = params.image;
-        parameters.strength = params.strength ?? 0.7;
-        parameters.noise = params.noise ?? 0.0;
+        parameters.image = params.image.replace(/^data:[^,]+,/, '');
+        parameters.strength = action === 'infill' ? (isV4OrV5 ? inpaintStrength.value : 1) : (params.strength ?? 0.7);
+        parameters.noise = action === 'img2img' ? (params.noise ?? 0) : 0;
         parameters.extra_noise_seed = seedToUse;
-        if (params.mask) {
-          parameters.mask = params.mask;
+        if (action === 'infill' && params.mask) {
+          parameters.mask = params.mask.replace(/^data:[^,]+,/, '');
         }
       }
 
@@ -723,6 +719,7 @@ export const useGenerationStore = defineStore('generation', () => {
 
           if (!response.ok) {
             let errMsg = '流式生成失败';
+            if (response.status === 413) throw new Error('上传的图片请求过大，请换用更小的底图');
             try {
               const errData = await response.json();
               errMsg = errData.message || errData.error || (typeof errData === 'object' ? JSON.stringify(errData) : String(errData));
@@ -1008,6 +1005,9 @@ export const useGenerationStore = defineStore('generation', () => {
       if (rawMsg.length > 200) {
         rawMsg = rawMsg.substring(0, 200) + '...';
       }
+      if (e.response?.status === 413) {
+        rawMsg = '上传的图片请求过大，请换用更小的底图';
+      }
       error.value = rawMsg || '生成失败';
       console.error('Generation Error:', error.value);
     } finally {
@@ -1022,6 +1022,11 @@ export const useGenerationStore = defineStore('generation', () => {
     
     // 如果已经有任务在生成中，或者 batchCount 不正确，直接退
     if (isGenerating.value || batchCount.value < 1) return;
+
+    if (params.image && imageMode.value === 'inpaint' && !params.mask) {
+      error.value = '请先绘制并保存要重绘的区域';
+      return;
+    }
 
     batchTotal.value = batchCount.value;
     batchCurrent.value = 1;
@@ -1052,7 +1057,12 @@ export const useGenerationStore = defineStore('generation', () => {
   const useParams = (historyItem: GeneratedImage | GenerationParams | any) => {
     const targetParams = historyItem?.params ? historyItem.params : historyItem;
     if (!targetParams) return;
-    Object.assign(params, targetParams);
+    const { image: _image, mask: _mask, width, height, ...settings } = targetParams;
+    Object.assign(params, settings);
+    if (!params.image) {
+      if (width !== undefined) params.width = width;
+      if (height !== undefined) params.height = height;
+    }
     params.seed = -1; // 默认还原为随机种子，防止误点导致生成完全一样的图
   };
 
@@ -1074,28 +1084,20 @@ export const useGenerationStore = defineStore('generation', () => {
     }
   };
 
-  const sendToInpaint = (imgUrl: string, preserveMask = false) => {
-    // 提取 base64
-    const base64 = imgUrl.includes('base64,') ? imgUrl.split('base64,')[1] : imgUrl;
-    params.image = base64;
-    if (!preserveMask) {
-      params.mask = undefined;
-    }
+  const imageMode = ref<'img2img' | 'inpaint'>('img2img');
+  const inpaintStrength = ref(1);
 
-    if (base64) {
-      try {
-        const img = new Image();
-        img.onload = () => {
-          const nw = img.naturalWidth || img.width;
-          const nh = img.naturalHeight || img.height;
-          if (nw > 0 && nh > 0) {
-            params.width = Math.max(64, Math.round(nw / 64) * 64);
-            params.height = Math.max(64, Math.round(nh / 64) * 64);
-          }
-        };
-        img.src = base64.startsWith('data:') ? base64 : `data:image/png;base64,${base64}`;
-      } catch (e) {}
-    }
+  const setBaseImage = (image: BaseImage, mode: 'img2img' | 'inpaint') => {
+    params.image = image.dataUrl;
+    params.mask = undefined;
+    params.width = image.width;
+    params.height = image.height;
+    imageMode.value = mode;
+  };
+
+  const sendToInpaint = async (url: string) => {
+    const source = /^(https?:|blob:|data:|\/)/.test(url) ? url : `data:image/png;base64,${url}`;
+    setBaseImage(await prepareBaseImage(source), 'inpaint');
   };
 
   const upscaleImage = async (options: {
@@ -1424,6 +1426,9 @@ export const useGenerationStore = defineStore('generation', () => {
     useParams, 
     usePrompt, 
     sendToInpaint,
+    setBaseImage,
+    imageMode,
+    inpaintStrength,
     isUpscaling,
     upscaleImage,
     deletePromptHistory, 

@@ -583,16 +583,20 @@ class StealthDataReader {
 
 async function tryExtractStealthPngInfo(arrayBuffer: ArrayBuffer, result: ParsedImageMetadata) {
   if (typeof document === 'undefined') return;
+  const header = new DataView(arrayBuffer);
+  if (header.byteLength < 24) return;
+  // Stealth extraction reads every pixel into memory. Normal PNG metadata is already parsed.
+  if (header.getUint32(16) * header.getUint32(20) > 16_000_000) return;
   try {
     const blob = new Blob([arrayBuffer], { type: 'image/png' });
     const url = URL.createObjectURL(blob);
     const img = new Image();
-    await new Promise((resolve, reject) => {
-      img.onload = resolve;
-      img.onerror = reject;
+    try {
       img.src = url;
-    });
-    URL.revokeObjectURL(url);
+      await img.decode();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
 
     const canvas = document.createElement('canvas');
     canvas.width = img.width;
